@@ -1,18 +1,30 @@
 package ru.mcs.llmrobot.core.config;
 
-import ru.mcs.llmrobot.core.llm.ModelConfig;
 import java.util.ArrayList;
 import java.util.List;
 
 public class AppConfig {
-    public ModelConfig defaultModel = new ModelConfig();
-    public List<ModelConfig> savedModels = new ArrayList<>();
+    public List<LlmProfile> profiles = new ArrayList<>();
+    public String activeProfileId = null;
     public String theme = "dark";
 
     public AppConfig() {
-        // defaults — LiteLLM on localhost
-        defaultModel.baseUrl = "http://localhost:4000/v1";
-        defaultModel.apiKey = "sk-1234";
-        defaultModel.modelId = "gpt-4o";
+        // дефолтный профиль при первом запуске
+        var ollama = new LlmProfile(
+                "Ollama local",
+                "http://localhost:11434/v1",
+                "ollama",
+                "qwen2.5-coder:32b"
+        );
+        profiles.add(ollama);
+        activeProfileId = ollama.id;
+    }
+
+    public LlmProfile activeProfile() {
+        if (activeProfileId == null) return profiles.isEmpty() ? null : profiles.get(0);
+        return profiles.stream()
+                .filter(p -> p.id.equals(activeProfileId))
+                .findFirst()
+                .orElse(profiles.isEmpty() ? null : profiles.get(0));
     }
 }

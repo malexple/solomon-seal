@@ -1,7 +1,6 @@
 package ru.mcs.llmrobot.core.session;
 
 import ru.mcs.llmrobot.core.context.ContextProfile;
-import ru.mcs.llmrobot.core.llm.ModelConfig;
 import ru.mcs.llmrobot.core.projects.ProjectContext;
 
 import java.time.Instant;
@@ -13,10 +12,10 @@ public class Session {
     public String id;
     public String title;
     public SessionMode mode;
+    public String profileId;              // ← ссылка на LlmProfile.id
     public List<Message> history;
     public List<ProjectContext> projects;
     public ContextProfile contextProfile;
-    public ModelConfig modelConfig;
     public Instant createdAt;
     public Instant updatedAt;
 
@@ -26,7 +25,6 @@ public class Session {
         this.projects = new ArrayList<>();
         this.mode = SessionMode.ASK;
         this.contextProfile = ContextProfile.MINIMAL;
-        this.modelConfig = new ModelConfig();
         this.createdAt = Instant.now();
         this.updatedAt = Instant.now();
     }

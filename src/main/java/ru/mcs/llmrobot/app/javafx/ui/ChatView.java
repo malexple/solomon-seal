@@ -6,12 +6,14 @@ import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.text.TextFlow;
+import ru.mcs.llmrobot.core.app.AppState;
 import ru.mcs.llmrobot.core.context.ContextBuilder;
-import ru.mcs.llmrobot.core.llm.*;
+import ru.mcs.llmrobot.core.llm.OpenAiCompatibleClient;
 import ru.mcs.llmrobot.core.session.*;
 
 public class ChatView extends BorderPane {
 
+    private final AppState appState;
     private final SessionManager sessionManager;
     private final OpenAiCompatibleClient llmClient;
     private final ContextBuilder contextBuilder;
@@ -26,23 +28,28 @@ public class ChatView extends BorderPane {
     private Label statusLabel;
     private Label tokenLabel;
     private javafx.scene.text.Text streamingText;
+    private Runnable onSessionTitleChanged;
 
     public ChatView(
+            AppState appState,
             SessionManager sessionManager,
             OpenAiCompatibleClient llmClient,
             ContextBuilder contextBuilder,
             DebugPanel debugPanel
     ) {
+        this.appState       = appState;
         this.sessionManager = sessionManager;
-        this.llmClient = llmClient;
+        this.llmClient      = llmClient;
         this.contextBuilder = contextBuilder;
-        this.debugPanel = debugPanel;
-
+        this.debugPanel     = debugPanel;
         buildUI();
     }
 
+    public void setOnSessionTitleChanged(Runnable callback) {
+        this.onSessionTitleChanged = callback;
+    }
+
     private void buildUI() {
-        // Message list
         messageList = new VBox(8);
         messageList.setPadding(new Insets(12));
         messageList.setStyle("-fx-background-color: #1e1e2e;");
@@ -52,33 +59,28 @@ public class ChatView extends BorderPane {
         scrollPane.setStyle("-fx-background-color: #1e1e2e; -fx-background: #1e1e2e;");
         scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
 
-        // Status bar
-        modeLabel = new Label("ASK");
+        modeLabel  = new Label("ASK");
         modeLabel.setStyle(Styles.BADGE_BLUE);
-
         tokenLabel = new Label("0 tokens");
         tokenLabel.setStyle(Styles.LABEL_MUTED);
-
         statusLabel = new Label("");
         statusLabel.setStyle(Styles.LABEL_MUTED);
 
-        // Mode switch buttons
-        var askBtn = modeButton("ASK");
-        var planBtn = modeButton("PLAN");
+        var askBtn   = modeButton("ASK");
+        var planBtn  = modeButton("PLAN");
         var buildBtn = modeButton("BUILD");
-        askBtn.setOnAction(e -> setMode(SessionMode.ASK));
-        planBtn.setOnAction(e -> setMode(SessionMode.PLAN));
+        askBtn.setOnAction(e   -> setMode(SessionMode.ASK));
+        planBtn.setOnAction(e  -> setMode(SessionMode.PLAN));
         buildBtn.setOnAction(e -> setMode(SessionMode.BUILD));
 
         var modeSwitcher = new HBox(4, askBtn, planBtn, buildBtn);
         modeSwitcher.setAlignment(Pos.CENTER_LEFT);
 
-        var topBar = new HBox(12, modeLabel, modeSwitcher, Spacer.h(), tokenLabel, statusLabel);
-        topBar.setAlignment(Pos.CENTER_LEFT);
-        topBar.setPadding(new Insets(6, 12, 6, 12));
-        topBar.setStyle("-fx-background-color: #181825; -fx-border-color: #313244; -fx-border-width: 0 0 1 0;");
+        var modeBar = new HBox(12, modeLabel, modeSwitcher, Spacer.h(), tokenLabel, statusLabel);
+        modeBar.setAlignment(Pos.CENTER_LEFT);
+        modeBar.setPadding(new Insets(6, 12, 6, 12));
+        modeBar.setStyle("-fx-background-color: #181825; -fx-border-color: #313244; -fx-border-width: 0 0 1 0;");
 
-        // Composer
         composer = new TextArea();
         composer.setPromptText("Type your message… (Ctrl+Enter to send)");
         composer.setWrapText(true);
@@ -88,6 +90,14 @@ public class ChatView extends BorderPane {
         composer.setOnKeyPressed(e -> {
             if (e.isControlDown() && e.getCode() == javafx.scene.input.KeyCode.ENTER) {
                 sendMessage();
+            }
+        });
+        composer.skinProperty().addListener((obs, o, n) -> {
+            if (n != null) {
+                var content = composer.lookup(".content");
+                if (content != null) {
+                    content.setStyle("-fx-text-fill: #cdd6f4; -fx-background-color: #181825;");
+                }
             }
         });
 
@@ -102,7 +112,7 @@ public class ChatView extends BorderPane {
         composerBar.setStyle("-fx-background-color: #181825; -fx-border-color: #313244; -fx-border-width: 1 0 0 0;");
         HBox.setHgrow(composer, Priority.ALWAYS);
 
-        setTop(topBar);
+        setTop(modeBar);
         setCenter(scrollPane);
         setBottom(composerBar);
         setStyle("-fx-background-color: #1e1e2e;");
@@ -110,6 +120,16 @@ public class ChatView extends BorderPane {
 
     public void loadSession(Session session) {
         this.currentSession = session;
+
+        // если сессия без профиля — привязываем активный
+        if (session.profileId == null || session.profileId.isBlank()) {
+            var p = appState.getActiveProfile();
+            if (p != null) {
+                session.profileId = p.id;
+                sessionManager.save(session);
+            }
+        }
+
         messageList.getChildren().clear();
         for (var msg : session.history) {
             appendBubble(msg.role, msg.content);
@@ -122,31 +142,40 @@ public class ChatView extends BorderPane {
 
     private void sendMessage() {
         if (currentSession == null || composer.getText().isBlank()) return;
+
         var text = composer.getText().trim();
         composer.clear();
         sendBtn.setDisable(true);
         statusLabel.setText("Thinking…");
 
-        // Add user message to session
+        maybeAutoTitle(text);
+
+        // ① сначала строим запрос (история ещё без нового сообщения)
+        var profile = appState.getActiveProfile();
+        if (profile == null) {
+            statusLabel.setText("No profile configured");
+            sendBtn.setDisable(false);
+            return;
+        }
+
+        var result = contextBuilder.build(currentSession, profile, text);
+        debugPanel.show(result.debug());
+        tokenLabel.setText(result.debug().estimatedTokens() + " tokens");
+
+        // ② только теперь добавляем в историю и рендерим
         var userMsg = Message.user(text);
         currentSession.addMessage(userMsg);
         appendBubble(Role.USER, text);
         sessionManager.save(currentSession);
 
-        // Build context + debug payload
-        var result = contextBuilder.build(currentSession, text);
-        debugPanel.show(result.debug());
-        tokenLabel.setText(result.debug().estimatedTokens() + " tokens");
-
-        // Add assistant bubble with streaming text
+        // ③ стриминг
         streamingText = new javafx.scene.text.Text();
         streamingText.setStyle("-fx-fill: #cdd6f4;");
         appendBubbleNode(Role.ASSISTANT, streamingText);
         var sb = new StringBuilder();
 
-        // Stream
         llmClient.stream(
-                currentSession.modelConfig,
+                profile,
                 result.request(),
                 token -> Platform.runLater(() -> {
                     sb.append(token);
@@ -154,8 +183,7 @@ public class ChatView extends BorderPane {
                     scrollToBottom();
                 }),
                 () -> Platform.runLater(() -> {
-                    var assistantMsg = Message.assistant(sb.toString());
-                    currentSession.addMessage(assistantMsg);
+                    currentSession.addMessage(Message.assistant(sb.toString()));
                     sessionManager.save(currentSession);
                     sendBtn.setDisable(false);
                     statusLabel.setText("");
@@ -168,9 +196,25 @@ public class ChatView extends BorderPane {
         );
     }
 
+    private void maybeAutoTitle(String userInput) {
+        if (currentSession == null) return;
+        if (!"New Session".equals(currentSession.title)) return;
+
+        var title = userInput.length() > 45
+                ? userInput.substring(0, 45).trim() + "…"
+                : userInput.trim();
+        title = title.replace('\n', ' ').replace('\r', ' ');
+        currentSession.title = title;
+        sessionManager.save(currentSession);
+
+        if (onSessionTitleChanged != null) {
+            Platform.runLater(onSessionTitleChanged);
+        }
+    }
+
     private void appendBubble(Role role, String content) {
         var text = new javafx.scene.text.Text(content);
-        text.setStyle(role == Role.USER ? "-fx-fill: #89b4fa;" : "-fx-fill: #cdd6f4;");
+        text.setStyle("-fx-fill: #cdd6f4;");
         appendBubbleNode(role, text);
     }
 
@@ -210,5 +254,7 @@ public class ChatView extends BorderPane {
         return btn;
     }
 
-    public Session getCurrentSession() { return currentSession; }
+    public Session getCurrentSession() {
+        return currentSession;
+    }
 }

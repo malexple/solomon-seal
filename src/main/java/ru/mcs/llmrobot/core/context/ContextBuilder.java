@@ -2,6 +2,7 @@ package ru.mcs.llmrobot.core.context;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import ru.mcs.llmrobot.core.config.LlmProfile;
 import ru.mcs.llmrobot.core.llm.ChatMessage;
 import ru.mcs.llmrobot.core.llm.ChatRequest;
 import ru.mcs.llmrobot.core.llm.DebugPayload;
@@ -29,7 +30,7 @@ public class ContextBuilder {
 
     public record BuildResult(ChatRequest request, DebugPayload debug) {}
 
-    public BuildResult build(Session session, String userInput) {
+    public BuildResult build(Session session, LlmProfile profile, String userInput) {
         var messages = new ArrayList<ChatMessage>();
 
         // 1. System prompt
@@ -68,12 +69,8 @@ public class ContextBuilder {
         messages.add(new ChatMessage("user", userInput));
 
         // 5. Build request
-        var request = new ChatRequest(
-                session.modelConfig.modelId,
-                messages,
-                true,   // streaming always on
-                4096
-        );
+        var request = new ChatRequest(profile.modelId, messages, true, 4096);
+
 
         // 6. Build debug payload
         int tokens = TokenEstimator.estimateMessages(messages);
@@ -84,11 +81,9 @@ public class ContextBuilder {
             rawJson = "{}";
         }
         var debug = new DebugPayload(
-                session.modelConfig.baseUrl + "/chat/completions",
-                session.modelConfig.modelId,
-                messages,
-                tokens,
-                rawJson
+                profile.baseUrl + "/chat/completions",
+                profile.modelId,
+                messages, tokens, rawJson
         );
 
         return new BuildResult(request, debug);

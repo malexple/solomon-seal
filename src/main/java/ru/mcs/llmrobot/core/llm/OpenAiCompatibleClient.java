@@ -1,9 +1,9 @@
 package ru.mcs.llmrobot.core.llm;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.mcs.llmrobot.core.config.LlmProfile;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -29,11 +29,11 @@ public class OpenAiCompatibleClient implements LlmClient {
     }
 
     @Override
-    public CompletableFuture<String> chat(ModelConfig config, ChatRequest request) {
+    public CompletableFuture<String> chat(LlmProfile profile, ChatRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 var body = mapper.writeValueAsString(request);
-                var req = buildRequest(config, body);
+                var req = buildRequest(profile, body);
                 var resp = http.send(req, HttpResponse.BodyHandlers.ofString());
                 if (resp.statusCode() != 200) {
                     throw new RuntimeException("LLM error " + resp.statusCode() + ": " + resp.body());
@@ -48,7 +48,7 @@ public class OpenAiCompatibleClient implements LlmClient {
 
     @Override
     public CompletableFuture<Void> stream(
-            ModelConfig config,
+            LlmProfile profile,
             ChatRequest request,
             Consumer<String> onToken,
             Runnable onComplete,
@@ -57,7 +57,7 @@ public class OpenAiCompatibleClient implements LlmClient {
         return CompletableFuture.runAsync(() -> {
             try {
                 var body = mapper.writeValueAsString(request);
-                var req = buildRequest(config, body);
+                var req = buildRequest(profile, body);
                 var resp = http.send(req, HttpResponse.BodyHandlers.ofInputStream());
                 if (resp.statusCode() != 200) {
                     throw new RuntimeException("LLM stream error " + resp.statusCode());
@@ -88,13 +88,13 @@ public class OpenAiCompatibleClient implements LlmClient {
         });
     }
 
-    private HttpRequest buildRequest(ModelConfig config, String body) {
+    private HttpRequest buildRequest(LlmProfile profile, String body) {
         return HttpRequest.newBuilder()
-                .uri(URI.create(config.baseUrl.replaceAll("/$", "") + "/chat/completions"))
+                .uri(URI.create(profile.baseUrl.replaceAll("/$", "") + "/chat/completions"))
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + config.apiKey)
+                .header("Authorization", "Bearer " + profile.apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
-                .timeout(Duration.ofMinutes(5))
+                .timeout(Duration.ofMinutes(10))
                 .build();
     }
 }

@@ -1,7 +1,9 @@
 package ru.mcs.llmrobot.core.llm;
 
-import java.util.function.Consumer;
+import ru.mcs.llmrobot.core.config.LlmProfile;
+
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /**
  * Unified LLM client interface.
@@ -12,13 +14,13 @@ public interface LlmClient {
     /**
      * Non-streaming: returns full response.
      */
-    CompletableFuture<String> chat(ModelConfig config, ChatRequest request);
+    CompletableFuture<String> chat(LlmProfile profile, ChatRequest request);
 
     /**
      * Streaming: calls onToken for each token chunk, onComplete when done, onError on failure.
      */
     CompletableFuture<Void> stream(
-            ModelConfig config,
+            LlmProfile profile,
             ChatRequest request,
             Consumer<String> onToken,
             Runnable onComplete,

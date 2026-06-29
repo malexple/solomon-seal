@@ -3,38 +3,25 @@ package ru.mcs.llmrobot.app.javafx.ui;
 import javafx.geometry.Orientation;
 import javafx.scene.control.SplitPane;
 import javafx.scene.layout.BorderPane;
-import ru.mcs.llmrobot.core.config.ConfigManager;
+import ru.mcs.llmrobot.core.app.AppState;
 import ru.mcs.llmrobot.core.context.ContextBuilder;
 import ru.mcs.llmrobot.core.llm.OpenAiCompatibleClient;
-import ru.mcs.llmrobot.core.session.Session;
 import ru.mcs.llmrobot.core.session.SessionManager;
 
-/**
- * Main window layout:
- * [ SessionList (left) | ChatView (center) | DebugPanel (right, toggleable) ]
- */
 public class MainWindow extends BorderPane {
 
-    private final SessionManager sessionManager;
-    private final ConfigManager configManager;
-    private final ChatView chatView;
-    private final SessionListView sessionListView;
-    private final DebugPanel debugPanel;
-    private final TopBar topBar;
-
     public MainWindow(
-            ConfigManager configManager,
+            AppState appState,
             SessionManager sessionManager,
             OpenAiCompatibleClient llmClient,
             ContextBuilder contextBuilder
     ) {
-        this.sessionManager = sessionManager;
-        this.configManager = configManager;
+        var debugPanel      = new DebugPanel();
+        var chatView        = new ChatView(appState, sessionManager, llmClient, contextBuilder, debugPanel);
+        var sessionListView = new SessionListView(sessionManager, chatView);
+        var topBar          = new TopBar(appState, sessionManager, chatView, debugPanel);
 
-        debugPanel = new DebugPanel();
-        chatView = new ChatView(sessionManager, llmClient, contextBuilder, debugPanel);
-        sessionListView = new SessionListView(sessionManager, chatView);
-        topBar = new TopBar(configManager, chatView, debugPanel);
+        chatView.setOnSessionTitleChanged(sessionListView::refresh);
 
         var mainSplit = new SplitPane();
         mainSplit.setOrientation(Orientation.HORIZONTAL);
@@ -45,7 +32,6 @@ public class MainWindow extends BorderPane {
         setTop(topBar);
         setCenter(mainSplit);
 
-        // Auto-select or create first session
         var sessions = sessionManager.getAll();
         if (!sessions.isEmpty()) {
             chatView.loadSession(sessions.get(0));
