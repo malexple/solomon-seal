@@ -5,6 +5,7 @@ import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.DirectoryChooser;
+import ru.mcs.llmrobot.core.index.IndexManager;
 import ru.mcs.llmrobot.core.projects.Project;
 import ru.mcs.llmrobot.core.session.Session;
 import ru.mcs.llmrobot.core.session.SessionManager;
@@ -30,9 +31,11 @@ public class ProjectsPanel extends VBox {
     private final SessionManager sessionManager;
     private final VBox projectList = new VBox(4);
     private Session currentSession;
+    private final IndexManager indexManager;
 
-    public ProjectsPanel(SessionManager sessionManager) {
+    public ProjectsPanel(SessionManager sessionManager, IndexManager indexManager) {
         this.sessionManager = sessionManager;
+        this.indexManager = indexManager;
 
         setStyle("-fx-background-color: #181825; -fx-border-color: #313244; -fx-border-width: 1 0 0 0;");
         setPadding(new Insets(8));
@@ -111,9 +114,20 @@ public class ProjectsPanel extends VBox {
                         "-fx-padding: 0 4 0 4;"
         ));
 
+        var indexBtn = new Button("⟳");
+        indexBtn.setStyle(
+                "-fx-background-color: transparent;" +
+                        "-fx-text-fill: #89b4fa;" +
+                        "-fx-font-size: 12px;" +
+                        "-fx-cursor: hand;" +
+                        "-fx-padding: 0 4 0 4;"
+        );
+        indexBtn.setTooltip(new Tooltip("Index project"));
+        indexBtn.setOnAction(e -> indexProject(project, indexBtn));
+
         var info = new VBox(1, nameLabel, pathLabel);
 
-        var row = new HBox(4, info, Spacer.h(), removeBtn);
+        var row = new HBox(4, info, Spacer.h(), indexBtn, removeBtn);
         row.setAlignment(Pos.CENTER_LEFT);
         row.setPadding(new Insets(3, 4, 3, 4));
         row.setStyle(
@@ -137,6 +151,33 @@ public class ProjectsPanel extends VBox {
         }
 
         return row;
+    }
+
+    private void indexProject(Project project, Button indexBtn) {
+        indexBtn.setDisable(true);
+        indexBtn.setText("...");
+
+        indexManager.indexAsync(
+                project,
+                (file, current, total) -> javafx.application.Platform.runLater(() ->
+                        indexBtn.setText(current + "/" + total)
+                ),
+                () -> javafx.application.Platform.runLater(() -> {
+                    indexBtn.setText("✓");
+                    indexBtn.setStyle(
+                            "-fx-background-color: transparent;" +
+                                    "-fx-text-fill: #a6e3a1;" +
+                                    "-fx-font-size: 12px;" +
+                                    "-fx-padding: 0 4 0 4;"
+                    );
+                    sessionManager.save(currentSession);
+                    refresh();
+                }),
+                err -> javafx.application.Platform.runLater(() -> {
+                    indexBtn.setText("✗");
+                    indexBtn.setDisable(false);
+                })
+        );
     }
 
     private void addProject() {

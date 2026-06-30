@@ -3,6 +3,7 @@ package ru.mcs.llmrobot.app.javafx.ui;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import ru.mcs.llmrobot.core.index.IndexManager;
 import ru.mcs.llmrobot.core.session.Session;
 import ru.mcs.llmrobot.core.session.SessionManager;
 
@@ -13,10 +14,10 @@ public class SessionListView extends VBox {
     private final ProjectsPanel projectsPanel;
     private final ListView<Session> list = new ListView<>();
 
-    public SessionListView(SessionManager sessionManager, ChatView chatView) {
+    public SessionListView(SessionManager sessionManager, ChatView chatView, IndexManager indexManager) {
         this.sessionManager = sessionManager;
         this.chatView       = chatView;
-        this.projectsPanel  = new ProjectsPanel(sessionManager);
+        this.projectsPanel  = new ProjectsPanel(sessionManager, indexManager);
 
         var newBtn = new Button("+ New Session");
         newBtn.setMaxWidth(Double.MAX_VALUE);

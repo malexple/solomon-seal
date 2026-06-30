@@ -33,6 +33,12 @@ dependencies {
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // SQLite
+    implementation 'org.xerial:sqlite-jdbc:3.49.1.0'
+
+    // JavaParser для AST
+    implementation 'com.github.javaparser:javaparser-symbol-solver-core:3.26.3'
 }
 
 application {

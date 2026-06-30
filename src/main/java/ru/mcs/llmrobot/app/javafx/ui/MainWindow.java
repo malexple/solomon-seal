@@ -5,6 +5,7 @@ import javafx.scene.control.SplitPane;
 import javafx.scene.layout.BorderPane;
 import ru.mcs.llmrobot.core.app.AppState;
 import ru.mcs.llmrobot.core.context.ContextBuilder;
+import ru.mcs.llmrobot.core.index.IndexManager;
 import ru.mcs.llmrobot.core.llm.OpenAiCompatibleClient;
 import ru.mcs.llmrobot.core.session.SessionManager;
 
@@ -14,11 +15,12 @@ public class MainWindow extends BorderPane {
             AppState appState,
             SessionManager sessionManager,
             OpenAiCompatibleClient llmClient,
-            ContextBuilder contextBuilder
+            ContextBuilder contextBuilder,
+            IndexManager indexManager
     ) {
         var debugPanel      = new DebugPanel();
         var chatView        = new ChatView(appState, sessionManager, llmClient, contextBuilder, debugPanel);
-        var sessionListView = new SessionListView(sessionManager, chatView);
+        var sessionListView = new SessionListView(sessionManager, chatView, indexManager);
         var topBar          = new TopBar(appState, sessionManager, chatView, debugPanel);
 
         // когда сессия авто-переименовывается — обновляем список и проекты

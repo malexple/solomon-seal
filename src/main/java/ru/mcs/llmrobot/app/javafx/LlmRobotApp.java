@@ -7,6 +7,7 @@ import ru.mcs.llmrobot.core.app.AppState;
 import ru.mcs.llmrobot.core.config.ConfigManager;
 import ru.mcs.llmrobot.core.config.SecretsManager;
 import ru.mcs.llmrobot.core.context.ContextBuilder;
+import ru.mcs.llmrobot.core.index.IndexManager;
 import ru.mcs.llmrobot.core.llm.OpenAiCompatibleClient;
 import ru.mcs.llmrobot.core.session.SessionManager;
 import ru.mcs.llmrobot.app.javafx.ui.MainWindow;
@@ -21,8 +22,9 @@ public class LlmRobotApp extends Application {
         var sessionManager = new SessionManager();
         var llmClient      = new OpenAiCompatibleClient();
         var contextBuilder = new ContextBuilder();
+        var indexManager   = new IndexManager();
 
-        var mainWindow = new MainWindow(appState, sessionManager, llmClient, contextBuilder);
+        var mainWindow = new MainWindow(appState, sessionManager, llmClient, contextBuilder, indexManager);
         stage.setTitle("LLM Robot");
         stage.setScene(new Scene(mainWindow, 1280, 800));
         stage.show();
