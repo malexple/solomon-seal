@@ -29,7 +29,7 @@ public class OpenAiCompatibleClient implements LlmClient {
     }
 
     @Override
-    public CompletableFuture<String> chat(LlmProfile profile, ChatRequest request) {
+    public CompletableFuture<String> chat(RuntimeProfile profile, ChatRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 var body = mapper.writeValueAsString(request);
@@ -48,7 +48,7 @@ public class OpenAiCompatibleClient implements LlmClient {
 
     @Override
     public CompletableFuture<Void> stream(
-            LlmProfile profile,
+            RuntimeProfile profile,
             ChatRequest request,
             Consumer<String> onToken,
             Runnable onComplete,
@@ -88,11 +88,11 @@ public class OpenAiCompatibleClient implements LlmClient {
         });
     }
 
-    private HttpRequest buildRequest(LlmProfile profile, String body) {
+    private HttpRequest buildRequest(RuntimeProfile profile, String body) {
         return HttpRequest.newBuilder()
-                .uri(URI.create(profile.baseUrl.replaceAll("/$", "") + "/chat/completions"))
+                .uri(URI.create(profile.baseUrl().replaceAll("/$", "") + "/chat/completions"))
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + profile.apiKey)
+                .header("Authorization", "Bearer " + profile.apiKey())
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofMinutes(10))
                 .build();

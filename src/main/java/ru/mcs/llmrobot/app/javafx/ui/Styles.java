@@ -85,4 +85,11 @@ public final class Styles {
                     "-fx-font-size: 11px;" +
                     "-fx-background-radius: 4;" +
                     "-fx-padding: 2 8 2 8;";
+
+    public static final String COMBO_BOX =
+            "-fx-background-color: #313244;" +
+                    "-fx-border-color: #45475a;" +
+                    "-fx-border-radius: 6;" +
+                    "-fx-background-radius: 6;" +
+                    "-fx-padding: 2 4 2 4;";
 }

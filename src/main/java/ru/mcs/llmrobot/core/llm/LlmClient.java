@@ -14,13 +14,13 @@ public interface LlmClient {
     /**
      * Non-streaming: returns full response.
      */
-    CompletableFuture<String> chat(LlmProfile profile, ChatRequest request);
+    CompletableFuture<String> chat(RuntimeProfile profile, ChatRequest request);
 
     /**
      * Streaming: calls onToken for each token chunk, onComplete when done, onError on failure.
      */
     CompletableFuture<Void> stream(
-            LlmProfile profile,
+            RuntimeProfile profile,
             ChatRequest request,
             Consumer<String> onToken,
             Runnable onComplete,

@@ -7,8 +7,10 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.text.TextFlow;
 import ru.mcs.llmrobot.core.app.AppState;
+import ru.mcs.llmrobot.core.config.LlmProfile;
 import ru.mcs.llmrobot.core.context.ContextBuilder;
 import ru.mcs.llmrobot.core.llm.OpenAiCompatibleClient;
+import ru.mcs.llmrobot.core.llm.RuntimeProfile;
 import ru.mcs.llmrobot.core.session.*;
 
 public class ChatView extends BorderPane {
@@ -141,41 +143,44 @@ public class ChatView extends BorderPane {
     }
 
     private void sendMessage() {
-        if (currentSession == null || composer.getText().isBlank()) return;
-
         var text = composer.getText().trim();
+        if (text.isBlank()) return;
         composer.clear();
         sendBtn.setDisable(true);
-        statusLabel.setText("Thinking…");
 
-        maybeAutoTitle(text);
-
-        // ① сначала строим запрос (история ещё без нового сообщения)
-        var profile = appState.getActiveProfile();
+        // ① Получаем профиль
+        LlmProfile profile = appState.getActiveProfile();
         if (profile == null) {
-            statusLabel.setText("No profile configured");
+            statusLabel.setText("No profile selected");
             sendBtn.setDisable(false);
             return;
         }
 
-        var result = contextBuilder.build(currentSession, profile, text);
+        // ② Достаём apiKey из SecretsManager и создаём RuntimeProfile
+        String apiKey = appState.getApiKey(profile.id);
+        RuntimeProfile runtime = RuntimeProfile.of(profile, apiKey);  // ← вот это добавь
+
+        // ③ Строим запрос ДО добавления в историю
+        var result = contextBuilder.build(currentSession, runtime, text);
         debugPanel.show(result.debug());
         tokenLabel.setText(result.debug().estimatedTokens() + " tokens");
 
-        // ② только теперь добавляем в историю и рендерим
+        // ④ Теперь добавляем в историю
         var userMsg = Message.user(text);
         currentSession.addMessage(userMsg);
         appendBubble(Role.USER, text);
         sessionManager.save(currentSession);
 
-        // ③ стриминг
+        maybeAutoTitle(text);
+
+        // ⑤ Стриминг — передаём runtime вместо profile
+        var sb = new StringBuilder();
         streamingText = new javafx.scene.text.Text();
         streamingText.setStyle("-fx-fill: #cdd6f4;");
         appendBubbleNode(Role.ASSISTANT, streamingText);
-        var sb = new StringBuilder();
 
         llmClient.stream(
-                profile,
+                runtime,           // ← RuntimeProfile вместо LlmProfile
                 result.request(),
                 token -> Platform.runLater(() -> {
                     sb.append(token);

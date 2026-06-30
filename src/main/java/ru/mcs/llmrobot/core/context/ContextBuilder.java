@@ -6,6 +6,7 @@ import ru.mcs.llmrobot.core.config.LlmProfile;
 import ru.mcs.llmrobot.core.llm.ChatMessage;
 import ru.mcs.llmrobot.core.llm.ChatRequest;
 import ru.mcs.llmrobot.core.llm.DebugPayload;
+import ru.mcs.llmrobot.core.llm.RuntimeProfile;
 import ru.mcs.llmrobot.core.session.Message;
 import ru.mcs.llmrobot.core.session.Role;
 import ru.mcs.llmrobot.core.session.Session;
@@ -30,7 +31,7 @@ public class ContextBuilder {
 
     public record BuildResult(ChatRequest request, DebugPayload debug) {}
 
-    public BuildResult build(Session session, LlmProfile profile, String userInput) {
+    public BuildResult build(Session session, RuntimeProfile profile, String userInput) {
         var messages = new ArrayList<ChatMessage>();
 
         // 1. System prompt
@@ -69,7 +70,7 @@ public class ContextBuilder {
         messages.add(new ChatMessage("user", userInput));
 
         // 5. Build request
-        var request = new ChatRequest(profile.modelId, messages, true, 4096);
+        var request = new ChatRequest(profile.modelId(), messages, true, 4096);
 
 
         // 6. Build debug payload
@@ -81,8 +82,8 @@ public class ContextBuilder {
             rawJson = "{}";
         }
         var debug = new DebugPayload(
-                profile.baseUrl + "/chat/completions",
-                profile.modelId,
+                profile.baseUrl() + "/chat/completions",
+                profile.modelId(),
                 messages, tokens, rawJson
         );
 

@@ -13,7 +13,6 @@ public class AppConfig {
         var ollama = new LlmProfile(
                 "Ollama local",
                 "http://localhost:11434/v1",
-                "ollama",
                 "qwen2.5-coder:32b"
         );
         profiles.add(ollama);
@@ -21,7 +20,8 @@ public class AppConfig {
     }
 
     public LlmProfile activeProfile() {
-        if (activeProfileId == null) return profiles.isEmpty() ? null : profiles.get(0);
+        if (activeProfileId == null)
+            return profiles.isEmpty() ? null : profiles.get(0);
         return profiles.stream()
                 .filter(p -> p.id.equals(activeProfileId))
                 .findFirst()
