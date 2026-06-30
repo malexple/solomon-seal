@@ -9,7 +9,6 @@ public final class Spacer {
 
     private Spacer() {}
 
-    /** Горизонтальный растягивающийся spacer */
     public static Region h() {
         var r = new Region();
         HBox.setHgrow(r, Priority.ALWAYS);

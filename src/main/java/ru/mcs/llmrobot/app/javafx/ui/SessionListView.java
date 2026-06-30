@@ -9,23 +9,22 @@ import ru.mcs.llmrobot.core.session.SessionManager;
 
 public class SessionListView extends VBox {
 
-    private final SessionManager sessionManager;
-    private final ChatView       chatView;
-    private final ProjectsPanel  projectsPanel;
+    private final SessionManager   sessionManager;
+    private final ChatView         chatView;
+    private final ProjectsPanel    projectsPanel;
+    private final SessionSearchBar searchBar;
     private final ListView<Session> list = new ListView<>();
 
     public SessionListView(SessionManager sessionManager, ChatView chatView, IndexManager indexManager) {
         this.sessionManager = sessionManager;
         this.chatView       = chatView;
         this.projectsPanel  = new ProjectsPanel(sessionManager, indexManager);
+        this.searchBar      = new SessionSearchBar(sessionManager, this::showSessions);
 
-        var newBtn = new Button("+ New Session");
+        var newBtn = new Button("+ New");
         newBtn.setMaxWidth(Double.MAX_VALUE);
         newBtn.setStyle(Styles.BTN_PRIMARY);
         newBtn.setOnAction(e -> createSession());
-
-        var label = new Label("Sessions");
-        label.setStyle(Styles.LABEL_MUTED);
 
         list.setStyle(Styles.LIST_VIEW);
         list.setCellFactory(lv -> new SessionCell());
@@ -42,13 +41,20 @@ public class SessionListView extends VBox {
 
         setStyle("-fx-background-color: #181825;");
         setPadding(new Insets(8));
-        setSpacing(6);
-        getChildren().addAll(label, newBtn, list, projectsPanel);
+        setSpacing(4);
+        getChildren().addAll(searchBar, newBtn, list, projectsPanel);
         VBox.setVgrow(list, Priority.ALWAYS);
     }
 
     public void refresh() {
-        list.getItems().setAll(sessionManager.getAll());
+        searchBar.refresh();
+    }
+
+    private void showSessions(java.util.List<Session> sessions) {
+        var selected = list.getSelectionModel().getSelectedItem();
+        list.getItems().setAll(sessions);
+        if (selected != null && sessions.contains(selected))
+            list.getSelectionModel().select(selected);
     }
 
     public void select(Session session) {
@@ -74,8 +80,16 @@ public class SessionListView extends VBox {
             if (empty || item == null) {
                 setText(null);
                 setGraphic(null);
+                setStyle(Styles.CELL_NORMAL);
             } else {
-                setText(item.title != null ? item.title : "Untitled");
+                // Режим сессии в заголовке
+                var mode  = item.mode != null ? " [" + item.mode.name() + "]" : "";
+                var title = (item.title != null ? item.title : "Untitled") + mode;
+                setText(title);
+
+                // Количество сообщений как подсказка
+                var count = item.history != null ? item.history.size() : 0;
+                setTooltip(new Tooltip(count + " messages"));
                 setStyle(isSelected() ? Styles.CELL_SELECTED : Styles.CELL_NORMAL);
             }
         }

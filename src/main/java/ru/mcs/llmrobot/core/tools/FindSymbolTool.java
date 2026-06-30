@@ -1,12 +1,8 @@
 package ru.mcs.llmrobot.core.tools;
 
-import java.sql.SQLException;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * Ищет символы (классы, методы, поля) по SQLite индексу.
- */
 public class FindSymbolTool implements AgentTool {
 
     @Override public String name() { return "find_symbol"; }
@@ -15,7 +11,7 @@ public class FindSymbolTool implements AgentTool {
 
     @Override
     public String description() {
-        return "Find classes, methods or fields by name in the project index. Supports partial match.";
+        return "Find classes, methods, and fields by name in the indexed project SQLite database.";
     }
 
     @Override
@@ -24,53 +20,59 @@ public class FindSymbolTool implements AgentTool {
             {
               "type": "object",
               "properties": {
-                "name":    {"type": "string", "description": "Symbol name (partial match supported)"},
-                "project": {"type": "string", "description": "Project alias to search in (optional, searches all if omitted)"},
-                "kind":    {"type": "string", "description": "Filter by kind: CLASS, INTERFACE, METHOD, FIELD, ENUM, RECORD, CONSTRUCTOR, CONSTANT"}
+                "query":   {"type": "string",  "description": "Symbol name or partial name"},
+                "kind":    {"type": "string",  "description": "Filter: CLASS, METHOD, FIELD (optional)"},
+                "project": {"type": "string",  "description": "Project alias (optional, searches all if omitted)"},
+                "limit":   {"type": "integer", "description": "Max results (default 20)"}
               },
-              "required": ["name"]
+              "required": ["query"]
             }""";
     }
 
     @Override
     public CompletableFuture<ToolResult> execute(Map<String, Object> args, ExecutionContext ctx) {
-        var name    = (String) args.get("name");
-        var project = (String) args.get("project");
-        var kind    = (String) args.get("kind");
-
-        if (name == null)
-            return CompletableFuture.completedFuture(ToolResult.fail("name is required"));
-
         return CompletableFuture.supplyAsync(() -> {
-            var sb = new StringBuilder();
-            var projects = project != null
-                    ? ctx.projects.stream().filter(p -> p.alias.equals(project)).toList()
-                    : ctx.projects;
+            var query = (String) args.get("query");
+            if (query == null || query.isBlank())
+                return ToolResult.fail("query is required");
 
-            if (projects.isEmpty())
-                return ToolResult.fail("No indexed projects found");
+            String kindFilter    = (String) args.get("kind");
+            String projectFilter = (String) args.get("project");
+            int    limit         = args.containsKey("limit")
+                    ? ((Number) args.get("limit")).intValue() : 20;
 
+            var sb    = new StringBuilder();
             int total = 0;
-            for (var proj : projects) {
+
+            for (var project : ctx.projects) {
+                if (projectFilter != null && !project.alias.equals(projectFilter)) continue;
+                if (!project.indexed) continue;
+
                 try {
-                    var index = ctx.indexManager.getIndex(proj);
-                    var symbols = index.findSymbols(name);
+                    var index   = ctx.indexManager.getIndex(project);
+                    var symbols = index.findSymbols(query);
+
                     for (var s : symbols) {
-                        if (kind != null && !s.kind.name().equalsIgnoreCase(kind)) continue;
-                        sb.append(s.kind).append("  ")
-                                .append(s.signature != null ? s.signature : s.name)
-                                .append("  [").append(s.parentName != null ? s.parentName + " " : "")
-                                .append("L").append(s.lineStart).append("]\n");
+                        if (total >= limit) break;
+                        // kind — enum, сравниваем через name()
+                        if (kindFilter != null && !kindFilter.equalsIgnoreCase(s.kind.name())) continue;
+
+                        sb.append("[").append(project.alias).append("] ")
+                                .append(s.kind.name()).append("  ")
+                                .append(s.signature != null ? s.signature : s.name);
+                        if (s.parentName != null)
+                            sb.append("  (in ").append(s.parentName).append(")");
+                        sb.append("  line:").append(s.lineStart).append("\n");
                         total++;
                     }
-                } catch (SQLException e) {
-                    sb.append("Error searching ").append(proj.displayName())
-                            .append(": ").append(e.getMessage()).append("\n");
+                } catch (Exception e) {
+                    sb.append("[").append(project.alias).append("] error: ")
+                            .append(e.getMessage()).append("\n");
                 }
             }
-            return total == 0
-                    ? ToolResult.fail("No symbols found matching: " + name)
-                    : ToolResult.ok(sb.toString().trim());
+
+            if (sb.isEmpty()) return ToolResult.fail("No symbols found for: " + query);
+            return ToolResult.ok(sb.toString().trim());
         });
     }
 }

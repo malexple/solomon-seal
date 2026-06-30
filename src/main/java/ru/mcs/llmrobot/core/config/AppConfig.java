@@ -7,6 +7,7 @@ public class AppConfig {
     public List<LlmProfile> profiles = new ArrayList<>();
     public String activeProfileId = null;
     public String theme = "dark";
+    public OrchestratorProfile orchestrator = new OrchestratorProfile();
 
     public AppConfig() {
         // дефолтный профиль при первом запуске

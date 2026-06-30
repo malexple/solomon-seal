@@ -6,6 +6,7 @@ import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.text.TextFlow;
+import ru.mcs.llmrobot.core.agent.OrchestratorService;
 import ru.mcs.llmrobot.core.app.AppState;
 import ru.mcs.llmrobot.core.config.LlmProfile;
 import ru.mcs.llmrobot.core.context.ContextBuilder;
@@ -27,6 +28,7 @@ public class ChatView extends BorderPane {
     private final ToolRegistry         toolRegistry;
     private final IndexManager         indexManager;
     private final ConfirmationHandler  confirmationHandler;
+    private final OrchestratorService orchestratorService;
 
     private Session              currentSession;
     private VBox                 messageList;
@@ -57,12 +59,17 @@ public class ChatView extends BorderPane {
         this.toolRegistry         = toolRegistry;
         this.indexManager         = indexManager;
         this.confirmationHandler  = confirmationHandler;
+        this.orchestratorService = new OrchestratorService(
+                appState.getConfig(), toolRegistry, indexManager
+        );
         buildUI();
     }
 
     public void setOnSessionTitleChanged(Runnable callback) {
         this.onSessionTitleChanged = callback;
     }
+
+
 
     // ── UI ────────────────────────────────────────────────────────────────────
 
@@ -167,7 +174,6 @@ public class ChatView extends BorderPane {
         sendBtn.setDisable(true);
         statusLabel.setText("Thinking…");
 
-        // ① Профиль
         LlmProfile profile = appState.getActiveProfile();
         if (profile == null) {
             statusLabel.setText("No profile selected");
@@ -175,29 +181,67 @@ public class ChatView extends BorderPane {
             return;
         }
 
-        String apiKey = appState.getApiKey(profile.id);
-        RuntimeProfile runtime = RuntimeProfile.of(profile, apiKey);
-
-        // ② Контекст
-        var result = contextBuilder.build(currentSession, runtime, text);
-        debugPanel.show(result.debug());
-        tokenLabel.setText(result.debug().estimatedTokens() + " tokens");
-
-        // ③ История
         currentSession.addMessage(Message.user(text));
         appendBubble(Role.USER, text);
         sessionManager.save(currentSession);
         maybeAutoTitle(text);
 
-        // ④ Стриминг
+        // ── PLAN / BUILD → AgentLoop ──────────────────────────────────────
+        if (currentSession.mode == SessionMode.PLAN || currentSession.mode == SessionMode.BUILD) {
+            var agentBubble = new javafx.scene.text.Text("Running agent…");
+            agentBubble.setStyle("-fx-fill: #89b4fa;");
+            appendBubbleNode(Role.ASSISTANT, agentBubble);
+
+            orchestratorService.run(
+                    currentSession, text, confirmationHandler,
+                    step -> Platform.runLater(() -> agentBubble.setText(
+                            agentBubble.getText() + "\n" + step))
+            ).thenAccept(result -> Platform.runLater(() -> {
+                if (result.success()) {
+                    // Лог инструментов
+                    if (!result.toolCallLog().isEmpty()) {
+                        var log = String.join("\n", result.toolCallLog());
+                        agentBubble.setText(log);
+                    }
+                    // Финальный ответ передаём в основной LLM
+                    sendToMainLlm(profile, result.finalAnswer(), text);
+                } else {
+                    agentBubble.setText("Agent error: " + result.error());
+                    sendBtn.setDisable(false);
+                    statusLabel.setText("Error");
+                }
+            }));
+            return;
+        }
+
+        // ── ASK → прямой запрос к LLM ────────────────────────────────────
+        sendToMainLlm(profile, null, text);
+    }
+
+    /**
+     * Отправляет запрос к основной LLM.
+     * agentContext — дополнительный контекст от оркестратора (или null).
+     */
+    private void sendToMainLlm(LlmProfile profile, String agentContext, String userText) {
+        var apiKey  = appState.getApiKey(profile.id);
+        var runtime = RuntimeProfile.of(profile, apiKey);
+
+        // Если есть контекст от оркестратора — временно добавляем в сессию
+        if (agentContext != null && !agentContext.isBlank()) {
+            currentSession.addMessage(Message.system(agentContext));
+        }
+
+        var result = contextBuilder.build(currentSession, runtime, userText);
+        debugPanel.show(result.debug());
+        tokenLabel.setText(result.debug().estimatedTokens() + " tokens");
+
         var sb = new StringBuilder();
         streamingText = new javafx.scene.text.Text();
         streamingText.setStyle("-fx-fill: #cdd6f4;");
         appendBubbleNode(Role.ASSISTANT, streamingText);
 
         llmClient.stream(
-                runtime,
-                result.request(),
+                runtime, result.request(),
                 token -> Platform.runLater(() -> {
                     sb.append(token);
                     streamingText.setText(sb.toString());
@@ -205,6 +249,10 @@ public class ChatView extends BorderPane {
                 }),
                 () -> Platform.runLater(() -> {
                     currentSession.addMessage(Message.assistant(sb.toString()));
+                    // Убираем временный system-контекст от оркестратора
+                    currentSession.history.removeIf(
+                            m -> m.role == Role.SYSTEM && m.content != null
+                                    && m.content.startsWith("# Project Context"));
                     sessionManager.save(currentSession);
                     sendBtn.setDisable(false);
                     statusLabel.setText("");

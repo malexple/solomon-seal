@@ -4,6 +4,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.stage.Stage;
 import ru.mcs.llmrobot.core.app.AppState;
 import ru.mcs.llmrobot.core.config.LlmProfile;
 import ru.mcs.llmrobot.core.session.SessionManager;
@@ -92,8 +93,7 @@ public class TopBar extends HBox {
         settingsBtn.setStyle(Styles.BTN_GHOST);
         settingsBtn.setTooltip(new Tooltip("LLM Profile Settings"));
         settingsBtn.setOnAction(e -> {
-            var win = new SettingsWindow(getScene().getWindow(), appState);
-            win.showAndWait();
+            new SettingsWindow(getScene().getWindow(), appState).show();
         });
 
         getChildren().addAll(title, Spacer.h(), profileBox, settingsBtn);

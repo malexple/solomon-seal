@@ -12,55 +12,53 @@ import ru.mcs.llmrobot.core.app.AppState;
 import ru.mcs.llmrobot.core.config.LlmProfile;
 import ru.mcs.llmrobot.core.config.ProviderType;
 
-/**
- * Модальное окно настроек профилей LLM.
- * Открывается кнопкой ⚙ в TopBar.
- *
- * Layout:
- * ┌─────────────────────────────────────────┐
- * │ [+ Add]  ListView<profiles>             │
- * ├─────────────────────────────────────────┤
- * │ Name:    [____________]                 │
- * │ URL:     [____________]                 │
- * │ Model:   [____________]                 │
- * │ API Key: [____________]  (secrets.json) │
- * │ Type:    [ComboBox    ]                 │
- * ├─────────────────────────────────────────┤
- * │              [Delete]  [Save]           │
- * └─────────────────────────────────────────┘
- */
 public class SettingsWindow extends Stage {
 
     private final AppState appState;
 
-    private final ListView<LlmProfile> profileList = new ListView<>();
-    private final TextField  nameField    = new TextField();
-    private final TextField  urlField     = new TextField();
-    private final TextField  modelField   = new TextField();
-    private final PasswordField apiKeyField = new PasswordField();
-    private final ComboBox<ProviderType> typeBox = new ComboBox<>();
-
-    private LlmProfile editing = null;  // null = новый
+    // ── Profiles form fields ──────────────────────────────────────────────────
+    private final ListView<LlmProfile> profileList  = new ListView<>();
+    private final TextField            nameField    = new TextField();
+    private final TextField            urlField     = new TextField();
+    private final TextField            modelField   = new TextField();
+    private final PasswordField        apiKeyField  = new PasswordField();
+    private final ComboBox<ProviderType> typeBox    = new ComboBox<>();
+    private LlmProfile editing = null;
 
     public SettingsWindow(Window owner, AppState appState) {
         this.appState = appState;
 
         initModality(Modality.APPLICATION_MODAL);
         initOwner(owner);
-        setTitle("LLM Profiles");
-        setResizable(false);
+        setTitle("Settings");
+        setResizable(true);
+        setMinWidth(640);
+        setMinHeight(460);
 
-        setScene(new Scene(buildLayout(), 620, 420));
+        var tabs = new TabPane();
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        tabs.getTabs().addAll(
+                tab("LLM Profiles",  buildProfilesPane()),
+                tab("Orchestrator",  new OrchestratorSettingsPane(appState))
+        );
+
+        setScene(new Scene(tabs, 660, 460));
         refreshList();
 
-        // при выборе — загружаем в форму
         profileList.getSelectionModel().selectedItemProperty().addListener(
                 (obs, o, selected) -> loadIntoForm(selected)
         );
     }
 
-    private BorderPane buildLayout() {
-        // ── левая колонка: список + кнопка Add ──────────────────────────────
+    private Tab tab(String title, javafx.scene.Node content) {
+        var t = new Tab(title, content);
+        t.setStyle("-fx-background-color: #181825; -fx-text-fill: #cdd6f4;");
+        return t;
+    }
+
+    // ── Profiles pane (без изменений) ─────────────────────────────────────────
+
+    private BorderPane buildProfilesPane() {
         var addBtn = new Button("+ Add");
         addBtn.setStyle(Styles.BTN_GHOST);
         addBtn.setMaxWidth(Double.MAX_VALUE);
@@ -74,7 +72,6 @@ public class SettingsWindow extends Stage {
         leftPane.setStyle("-fx-background-color: #181825;");
         VBox.setVgrow(profileList, Priority.ALWAYS);
 
-        // ── правая колонка: форма ────────────────────────────────────────────
         typeBox.getItems().addAll(ProviderType.values());
         typeBox.setValue(ProviderType.OPENAI_COMPATIBLE);
         typeBox.setMaxWidth(Double.MAX_VALUE);
@@ -85,13 +82,12 @@ public class SettingsWindow extends Stage {
         form.setPadding(new Insets(16));
         form.setStyle("-fx-background-color: #1e1e2e;");
 
-        addRow(form, 0, "Name",    nameField);
+        addRow(form, 0, "Name",     nameField);
         addRow(form, 1, "Base URL", urlField);
         addRow(form, 2, "Model ID", modelField);
         addRow(form, 3, "API Key",  apiKeyField);
         addRow(form, 4, "Type",     typeBox);
 
-        // стили полей
         for (var field : new Control[]{nameField, urlField, modelField, apiKeyField}) {
             field.setStyle(Styles.INPUT);
             field.setMaxWidth(Double.MAX_VALUE);
@@ -109,22 +105,23 @@ public class SettingsWindow extends Stage {
         btnBar.setPadding(new Insets(0, 16, 16, 16));
         btnBar.setStyle("-fx-background-color: #1e1e2e;");
 
-        var rightPane = new VBox(form, Spacer.v(), btnBar);
-        rightPane.setStyle("-fx-background-color: #1e1e2e;");
-        VBox.setVgrow(form, Priority.ALWAYS);
-
         ColumnConstraints col1 = new ColumnConstraints(90);
         ColumnConstraints col2 = new ColumnConstraints();
         col2.setHgrow(Priority.ALWAYS);
         form.getColumnConstraints().addAll(col1, col2);
 
-        // ── сборка ──────────────────────────────────────────────────────────
+        var rightPane = new VBox(form, Spacer.v(), btnBar);
+        rightPane.setStyle("-fx-background-color: #1e1e2e;");
+        VBox.setVgrow(form, Priority.ALWAYS);
+
         var root = new BorderPane();
         root.setLeft(leftPane);
         root.setCenter(rightPane);
         root.setStyle("-fx-background-color: #1e1e2e;");
         return root;
     }
+
+    // ── Helpers (без изменений) ───────────────────────────────────────────────
 
     private void addRow(GridPane grid, int row, String labelText, javafx.scene.Node field) {
         var label = new Label(labelText + ":");
@@ -176,7 +173,6 @@ public class SettingsWindow extends Stage {
         profile.modelId = model;
         profile.type    = typeBox.getValue();
 
-        // apiKey — в secrets.json
         appState.setApiKey(profile.id, apiKey);
         appState.saveProfile(profile);
 

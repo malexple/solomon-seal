@@ -5,10 +5,6 @@ import ru.mcs.llmrobot.core.config.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Central in-memory application state.
- * UI components observe this instead of talking to each other directly.
- */
 public class AppState {
 
     private final ConfigManager  configManager;
@@ -23,7 +19,17 @@ public class AppState {
         this.secretsManager = secretsManager;
     }
 
-    // ── profiles ─────────────────────────────────────────────────────────────
+    // ── config ────────────────────────────────────────────────────────────────
+
+    public AppConfig getConfig() {
+        return configManager.get();
+    }
+
+    public void saveConfig() {
+        configManager.save();
+    }
+
+    // ── profiles ──────────────────────────────────────────────────────────────
 
     public LlmProfile getActiveProfile() {
         return configManager.get().activeProfile();
@@ -78,6 +84,7 @@ public class AppState {
     // ── session ───────────────────────────────────────────────────────────────
 
     public ru.mcs.llmrobot.core.session.Session getActiveSession() { return activeSession; }
+
     public void setActiveSession(ru.mcs.llmrobot.core.session.Session s) {
         this.activeSession = s;
         sessionChangeListeners.forEach(Runnable::run);

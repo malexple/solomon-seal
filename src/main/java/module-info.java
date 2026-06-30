@@ -20,7 +20,9 @@ module ru.mcs.llmrobot {
     exports ru.mcs.llmrobot.app.javafx.ui;
     exports ru.mcs.llmrobot.app.tui;
     exports ru.mcs.llmrobot.core.index;
+    exports ru.mcs.llmrobot.core.agent;
 
+    opens ru.mcs.llmrobot.core.agent to com.fasterxml.jackson.databind;
     opens ru.mcs.llmrobot.core.session to com.fasterxml.jackson.databind;
     opens ru.mcs.llmrobot.core.llm     to com.fasterxml.jackson.databind;
     opens ru.mcs.llmrobot.core.context to com.fasterxml.jackson.databind;

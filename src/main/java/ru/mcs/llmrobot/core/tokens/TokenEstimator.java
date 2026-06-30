@@ -18,7 +18,7 @@ public class TokenEstimator {
 
     public static int estimateMessages(List<ChatMessage> messages) {
         return messages.stream()
-                .mapToInt(m -> MESSAGE_OVERHEAD + estimate(m.content()))
-                .sum() + 3; // priming tokens
+                .mapToInt(m -> MESSAGE_OVERHEAD + estimate(m.content))  // ← m.content вместо m.content()
+                .sum() + 3;
     }
 }
