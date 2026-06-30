@@ -2,23 +2,21 @@ package ru.mcs.llmrobot.core.context;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import ru.mcs.llmrobot.core.config.LlmProfile;
 import ru.mcs.llmrobot.core.llm.ChatMessage;
 import ru.mcs.llmrobot.core.llm.ChatRequest;
 import ru.mcs.llmrobot.core.llm.DebugPayload;
 import ru.mcs.llmrobot.core.llm.RuntimeProfile;
+import ru.mcs.llmrobot.core.projects.Project;
 import ru.mcs.llmrobot.core.session.Message;
-import ru.mcs.llmrobot.core.session.Role;
 import ru.mcs.llmrobot.core.session.Session;
 import ru.mcs.llmrobot.core.tokens.TokenEstimator;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.List;
 
 /**
- * Builds ChatRequest from Session + user query + context profile.
+ * Builds ChatRequest from Session + user query + RuntimeProfile.
  * This is the heart of "what gets sent to the model".
  */
 public class ContextBuilder {
@@ -44,26 +42,20 @@ public class ContextBuilder {
             }
             case CURRENT_FILE -> {
                 var fileContext = buildCurrentFileContext(session);
-                if (fileContext != null) {
-                    messages.add(new ChatMessage("system", fileContext));
-                }
+                if (fileContext != null) messages.add(new ChatMessage("system", fileContext));
             }
             case PROJECT_SUMMARY -> {
                 var treeContext = buildProjectTreeContext(session);
-                if (treeContext != null) {
-                    messages.add(new ChatMessage("system", treeContext));
-                }
+                if (treeContext != null) messages.add(new ChatMessage("system", treeContext));
             }
-            default -> {} // FILE_SET, SELECTION handled externally via addContext()
+            default -> {} // FILE_SET, SELECTION handled externally
         }
 
-        // 3. History (last N messages to avoid context overflow)
-        int maxHistory = 20;
+        // 3. History (last 20 messages)
         var history = session.history;
-        var start = Math.max(0, history.size() - maxHistory);
+        var start = Math.max(0, history.size() - 20);
         for (int i = start; i < history.size(); i++) {
-            var msg = history.get(i);
-            messages.add(toWire(msg));
+            messages.add(toWire(history.get(i)));
         }
 
         // 4. Current user message
@@ -71,7 +63,6 @@ public class ContextBuilder {
 
         // 5. Build request
         var request = new ChatRequest(profile.modelId(), messages, true, 4096);
-
 
         // 6. Build debug payload
         int tokens = TokenEstimator.estimateMessages(messages);
@@ -92,17 +83,17 @@ public class ContextBuilder {
 
     private ChatMessage toWire(Message msg) {
         var role = switch (msg.role) {
-            case USER -> "user";
+            case USER      -> "user";
             case ASSISTANT -> "assistant";
-            case SYSTEM -> "system";
-            case TOOL -> "tool";
+            case SYSTEM    -> "system";
+            case TOOL      -> "tool";
         };
         return new ChatMessage(role, msg.content);
     }
 
     private String buildCurrentFileContext(Session session) {
         if (session.projects.isEmpty()) return null;
-        // Placeholder — in real use, pass current file path from UI
+        // TODO: Phase 3 — передавать текущий открытый файл из UI
         return null;
     }
 
@@ -111,9 +102,10 @@ public class ContextBuilder {
         var sb = new StringBuilder();
         sb.append("# Project structure\n\n");
         for (var project : session.projects) {
-            sb.append("## ").append(project.alias).append(" (").append(project.root).append(")\n");
+            sb.append("## ").append(project.displayName())
+                    .append(" (").append(project.rootPath).append(")\n");
             if (project.description != null) sb.append(project.description).append("\n");
-            appendTree(sb, project.root, "", 0, 3);
+            appendTree(sb, project.root(), "", 0, 3);
             sb.append("\n");
         }
         return sb.toString();
@@ -124,16 +116,18 @@ public class ContextBuilder {
         try (var stream = Files.list(dir)) {
             var entries = stream
                     .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .filter(p -> !p.getFileName().toString().equals("node_modules"))
-                    .filter(p -> !p.getFileName().toString().equals("build"))
-                    .filter(p -> !p.getFileName().toString().equals("target"))
+                    .filter(p -> {
+                        var n = p.getFileName().toString();
+                        return !n.equals("node_modules") && !n.equals("build")
+                                && !n.equals("target") && !n.equals(".gradle");
+                    })
                     .sorted()
                     .toList();
             for (int i = 0; i < entries.size(); i++) {
                 var entry = entries.get(i);
-                var last = (i == entries.size() - 1);
+                var last  = (i == entries.size() - 1);
                 sb.append(prefix).append(last ? "└── " : "├── ")
-                  .append(entry.getFileName()).append("\n");
+                        .append(entry.getFileName()).append("\n");
                 if (Files.isDirectory(entry)) {
                     appendTree(sb, entry, prefix + (last ? "    " : "│   "), depth + 1, maxDepth);
                 }

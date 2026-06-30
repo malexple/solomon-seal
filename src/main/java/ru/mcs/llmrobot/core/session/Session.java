@@ -1,7 +1,7 @@
 package ru.mcs.llmrobot.core.session;
 
 import ru.mcs.llmrobot.core.context.ContextProfile;
-import ru.mcs.llmrobot.core.projects.ProjectContext;
+import ru.mcs.llmrobot.core.projects.Project;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -12,21 +12,21 @@ public class Session {
     public String id;
     public String title;
     public SessionMode mode;
-    public String profileId;              // ← ссылка на LlmProfile.id
+    public String profileId;
     public List<Message> history;
-    public List<ProjectContext> projects;
+    public List<Project> projects;       // ← Project вместо ProjectContext
     public ContextProfile contextProfile;
     public Instant createdAt;
     public Instant updatedAt;
 
     public Session() {
-        this.id = UUID.randomUUID().toString();
-        this.history = new ArrayList<>();
-        this.projects = new ArrayList<>();
-        this.mode = SessionMode.ASK;
+        this.id             = UUID.randomUUID().toString();
+        this.history        = new ArrayList<>();
+        this.projects       = new ArrayList<>();
+        this.mode           = SessionMode.ASK;
         this.contextProfile = ContextProfile.MINIMAL;
-        this.createdAt = Instant.now();
-        this.updatedAt = Instant.now();
+        this.createdAt      = Instant.now();
+        this.updatedAt      = Instant.now();
     }
 
     public Session(String title) {
@@ -39,8 +39,13 @@ public class Session {
         updatedAt = Instant.now();
     }
 
-    public void addProject(ProjectContext project) {
+    public void addProject(Project project) {
         projects.add(project);
+    }
+
+    public void removeProject(String projectId) {
+        projects.removeIf(p -> p.id.equals(projectId));
+        updatedAt = Instant.now();
     }
 
     public void touch() {

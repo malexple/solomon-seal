@@ -1,9 +1,8 @@
 package ru.mcs.llmrobot.app.javafx.ui;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import ru.mcs.llmrobot.core.session.Session;
 import ru.mcs.llmrobot.core.session.SessionManager;
 
@@ -11,11 +10,13 @@ public class SessionListView extends VBox {
 
     private final SessionManager sessionManager;
     private final ChatView chatView;
+    private final ProjectsPanel projectsPanel;
     private final ListView<Session> list = new ListView<>();
 
     public SessionListView(SessionManager sessionManager, ChatView chatView) {
         this.sessionManager = sessionManager;
-        this.chatView = chatView;
+        this.chatView       = chatView;
+        this.projectsPanel  = new ProjectsPanel(sessionManager);
 
         var newBtn = new Button("+ New Session");
         newBtn.setMaxWidth(Double.MAX_VALUE);
@@ -28,15 +29,23 @@ public class SessionListView extends VBox {
         list.setStyle(Styles.LIST_VIEW);
         list.setCellFactory(lv -> new SessionCell());
         list.getSelectionModel().selectedItemProperty().addListener(
-                (obs, old, session) -> { if (session != null) chatView.loadSession(session); });
+                (obs, old, session) -> {
+                    if (session != null) {
+                        chatView.loadSession(session);
+                        projectsPanel.loadSession(session);  // ← обновляем проекты
+                    }
+                }
+        );
 
         refresh();
 
         setStyle("-fx-background-color: #181825;");
         setPadding(new Insets(8));
         setSpacing(6);
-        getChildren().addAll(label, newBtn, list);
-        VBox.setVgrow(list, javafx.scene.layout.Priority.ALWAYS);
+
+        // список сессий растягивается, проекты внизу фиксированы
+        getChildren().addAll(label, newBtn, list, projectsPanel);
+        VBox.setVgrow(list, Priority.ALWAYS);
     }
 
     public void refresh() {
@@ -45,12 +54,19 @@ public class SessionListView extends VBox {
 
     public void select(Session session) {
         list.getSelectionModel().select(session);
+        projectsPanel.loadSession(session);
+    }
+
+    /** Вызывается из ChatView когда название сессии изменилось */
+    public void refreshProjects() {
+        projectsPanel.refresh();
     }
 
     private void createSession() {
         var session = sessionManager.create("New Session");
         refresh();
         select(session);
+        chatView.loadSession(session);
     }
 
     private class SessionCell extends ListCell<Session> {

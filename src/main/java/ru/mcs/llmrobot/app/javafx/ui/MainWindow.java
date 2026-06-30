@@ -21,7 +21,11 @@ public class MainWindow extends BorderPane {
         var sessionListView = new SessionListView(sessionManager, chatView);
         var topBar          = new TopBar(appState, sessionManager, chatView, debugPanel);
 
-        chatView.setOnSessionTitleChanged(sessionListView::refresh);
+        // когда сессия авто-переименовывается — обновляем список и проекты
+        chatView.setOnSessionTitleChanged(() -> {
+            sessionListView.refresh();
+            sessionListView.refreshProjects();
+        });
 
         var mainSplit = new SplitPane();
         mainSplit.setOrientation(Orientation.HORIZONTAL);
@@ -32,6 +36,7 @@ public class MainWindow extends BorderPane {
         setTop(topBar);
         setCenter(mainSplit);
 
+        // авто-выбор первой сессии или создание новой
         var sessions = sessionManager.getAll();
         if (!sessions.isEmpty()) {
             chatView.loadSession(sessions.get(0));
@@ -40,6 +45,7 @@ public class MainWindow extends BorderPane {
             var session = sessionManager.create("New Session");
             chatView.loadSession(session);
             sessionListView.refresh();
+            sessionListView.select(session);
         }
     }
 }

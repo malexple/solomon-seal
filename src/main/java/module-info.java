@@ -22,5 +22,6 @@ module ru.mcs.llmrobot {
     opens ru.mcs.llmrobot.core.session to com.fasterxml.jackson.databind;
     opens ru.mcs.llmrobot.core.llm     to com.fasterxml.jackson.databind;
     opens ru.mcs.llmrobot.core.context to com.fasterxml.jackson.databind;
-    opens ru.mcs.llmrobot.core.config  to com.fasterxml.jackson.databind;  // ← новый (AppConfig, LlmProfile)
+    opens ru.mcs.llmrobot.core.config  to com.fasterxml.jackson.databind;
+    opens  ru.mcs.llmrobot.core.projects to com.fasterxml.jackson.databind;
 }

@@ -16,7 +16,6 @@ public final class Spacer {
         return r;
     }
 
-    /** Вертикальный растягивающийся spacer */
     public static Region v() {
         var r = new Region();
         VBox.setVgrow(r, Priority.ALWAYS);
