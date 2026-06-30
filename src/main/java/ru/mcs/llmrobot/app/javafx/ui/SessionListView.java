@@ -10,8 +10,8 @@ import ru.mcs.llmrobot.core.session.SessionManager;
 public class SessionListView extends VBox {
 
     private final SessionManager sessionManager;
-    private final ChatView chatView;
-    private final ProjectsPanel projectsPanel;
+    private final ChatView       chatView;
+    private final ProjectsPanel  projectsPanel;
     private final ListView<Session> list = new ListView<>();
 
     public SessionListView(SessionManager sessionManager, ChatView chatView, IndexManager indexManager) {
@@ -33,7 +33,7 @@ public class SessionListView extends VBox {
                 (obs, old, session) -> {
                     if (session != null) {
                         chatView.loadSession(session);
-                        projectsPanel.loadSession(session);  // ← обновляем проекты
+                        projectsPanel.loadSession(session);
                     }
                 }
         );
@@ -43,8 +43,6 @@ public class SessionListView extends VBox {
         setStyle("-fx-background-color: #181825;");
         setPadding(new Insets(8));
         setSpacing(6);
-
-        // список сессий растягивается, проекты внизу фиксированы
         getChildren().addAll(label, newBtn, list, projectsPanel);
         VBox.setVgrow(list, Priority.ALWAYS);
     }
@@ -58,7 +56,6 @@ public class SessionListView extends VBox {
         projectsPanel.loadSession(session);
     }
 
-    /** Вызывается из ChatView когда название сессии изменилось */
     public void refreshProjects() {
         projectsPanel.refresh();
     }

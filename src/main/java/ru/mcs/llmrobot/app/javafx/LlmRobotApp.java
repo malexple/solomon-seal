@@ -22,9 +22,8 @@ public class LlmRobotApp extends Application {
         var sessionManager = new SessionManager();
         var llmClient      = new OpenAiCompatibleClient();
         var contextBuilder = new ContextBuilder();
-        var indexManager   = new IndexManager();
 
-        var mainWindow = new MainWindow(appState, sessionManager, llmClient, contextBuilder, indexManager);
+        var mainWindow = new MainWindow(appState, sessionManager, llmClient, contextBuilder);
         stage.setTitle("LLM Robot");
         stage.setScene(new Scene(mainWindow, 1280, 800));
         stage.show();

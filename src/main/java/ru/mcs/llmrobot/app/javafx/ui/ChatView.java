@@ -9,47 +9,62 @@ import javafx.scene.text.TextFlow;
 import ru.mcs.llmrobot.core.app.AppState;
 import ru.mcs.llmrobot.core.config.LlmProfile;
 import ru.mcs.llmrobot.core.context.ContextBuilder;
+import ru.mcs.llmrobot.core.index.IndexManager;
 import ru.mcs.llmrobot.core.llm.OpenAiCompatibleClient;
 import ru.mcs.llmrobot.core.llm.RuntimeProfile;
 import ru.mcs.llmrobot.core.session.*;
+import ru.mcs.llmrobot.core.tools.ConfirmationHandler;
+import ru.mcs.llmrobot.core.tools.ExecutionContext;
+import ru.mcs.llmrobot.core.tools.ToolRegistry;
 
 public class ChatView extends BorderPane {
 
-    private final AppState appState;
-    private final SessionManager sessionManager;
+    private final AppState             appState;
+    private final SessionManager       sessionManager;
     private final OpenAiCompatibleClient llmClient;
-    private final ContextBuilder contextBuilder;
-    private final DebugPanel debugPanel;
+    private final ContextBuilder       contextBuilder;
+    private final DebugPanel           debugPanel;
+    private final ToolRegistry         toolRegistry;
+    private final IndexManager         indexManager;
+    private final ConfirmationHandler  confirmationHandler;
 
-    private Session currentSession;
-    private VBox messageList;
-    private ScrollPane scrollPane;
-    private TextArea composer;
-    private Button sendBtn;
-    private Label modeLabel;
-    private Label statusLabel;
-    private Label tokenLabel;
+    private Session              currentSession;
+    private VBox                 messageList;
+    private ScrollPane           scrollPane;
+    private TextArea             composer;
+    private Button               sendBtn;
+    private Label                modeLabel;
+    private Label                statusLabel;
+    private Label                tokenLabel;
     private javafx.scene.text.Text streamingText;
-    private Runnable onSessionTitleChanged;
+    private Runnable             onSessionTitleChanged;
 
     public ChatView(
             AppState appState,
             SessionManager sessionManager,
             OpenAiCompatibleClient llmClient,
             ContextBuilder contextBuilder,
-            DebugPanel debugPanel
+            DebugPanel debugPanel,
+            ToolRegistry toolRegistry,
+            IndexManager indexManager,
+            ConfirmationHandler confirmationHandler
     ) {
-        this.appState       = appState;
-        this.sessionManager = sessionManager;
-        this.llmClient      = llmClient;
-        this.contextBuilder = contextBuilder;
-        this.debugPanel     = debugPanel;
+        this.appState             = appState;
+        this.sessionManager       = sessionManager;
+        this.llmClient            = llmClient;
+        this.contextBuilder       = contextBuilder;
+        this.debugPanel           = debugPanel;
+        this.toolRegistry         = toolRegistry;
+        this.indexManager         = indexManager;
+        this.confirmationHandler  = confirmationHandler;
         buildUI();
     }
 
     public void setOnSessionTitleChanged(Runnable callback) {
         this.onSessionTitleChanged = callback;
     }
+
+    // ── UI ────────────────────────────────────────────────────────────────────
 
     private void buildUI() {
         messageList = new VBox(8);
@@ -61,9 +76,9 @@ public class ChatView extends BorderPane {
         scrollPane.setStyle("-fx-background-color: #1e1e2e; -fx-background: #1e1e2e;");
         scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
 
-        modeLabel  = new Label("ASK");
+        modeLabel   = new Label("ASK");
         modeLabel.setStyle(Styles.BADGE_BLUE);
-        tokenLabel = new Label("0 tokens");
+        tokenLabel  = new Label("0 tokens");
         tokenLabel.setStyle(Styles.LABEL_MUTED);
         statusLabel = new Label("");
         statusLabel.setStyle(Styles.LABEL_MUTED);
@@ -90,17 +105,8 @@ public class ChatView extends BorderPane {
         composer.setMaxHeight(120);
         composer.setStyle(Styles.TEXTAREA);
         composer.setOnKeyPressed(e -> {
-            if (e.isControlDown() && e.getCode() == javafx.scene.input.KeyCode.ENTER) {
+            if (e.isControlDown() && e.getCode() == javafx.scene.input.KeyCode.ENTER)
                 sendMessage();
-            }
-        });
-        composer.skinProperty().addListener((obs, o, n) -> {
-            if (n != null) {
-                var content = composer.lookup(".content");
-                if (content != null) {
-                    content.setStyle("-fx-text-fill: #cdd6f4; -fx-background-color: #181825;");
-                }
-            }
         });
 
         sendBtn = new Button("Send");
@@ -120,10 +126,11 @@ public class ChatView extends BorderPane {
         setStyle("-fx-background-color: #1e1e2e;");
     }
 
+    // ── Session ───────────────────────────────────────────────────────────────
+
     public void loadSession(Session session) {
         this.currentSession = session;
 
-        // если сессия без профиля — привязываем активный
         if (session.profileId == null || session.profileId.isBlank()) {
             var p = appState.getActiveProfile();
             if (p != null) {
@@ -137,18 +144,30 @@ public class ChatView extends BorderPane {
             appendBubble(msg.role, msg.content);
         }
         scrollToBottom();
-        if (session.mode != null) {
-            modeLabel.setText(session.mode.name());
-        }
+        if (session.mode != null) modeLabel.setText(session.mode.name());
     }
 
+    public Session getCurrentSession() {
+        return currentSession;
+    }
+
+    /** Создаёт ExecutionContext для текущей сессии */
+    public ExecutionContext buildExecutionContext() {
+        return new ExecutionContext(currentSession, indexManager, confirmationHandler);
+    }
+
+    // ── Send ──────────────────────────────────────────────────────────────────
+
     private void sendMessage() {
+        if (currentSession == null) return;
         var text = composer.getText().trim();
         if (text.isBlank()) return;
+
         composer.clear();
         sendBtn.setDisable(true);
+        statusLabel.setText("Thinking…");
 
-        // ① Получаем профиль
+        // ① Профиль
         LlmProfile profile = appState.getActiveProfile();
         if (profile == null) {
             statusLabel.setText("No profile selected");
@@ -156,31 +175,28 @@ public class ChatView extends BorderPane {
             return;
         }
 
-        // ② Достаём apiKey из SecretsManager и создаём RuntimeProfile
         String apiKey = appState.getApiKey(profile.id);
-        RuntimeProfile runtime = RuntimeProfile.of(profile, apiKey);  // ← вот это добавь
+        RuntimeProfile runtime = RuntimeProfile.of(profile, apiKey);
 
-        // ③ Строим запрос ДО добавления в историю
+        // ② Контекст
         var result = contextBuilder.build(currentSession, runtime, text);
         debugPanel.show(result.debug());
         tokenLabel.setText(result.debug().estimatedTokens() + " tokens");
 
-        // ④ Теперь добавляем в историю
-        var userMsg = Message.user(text);
-        currentSession.addMessage(userMsg);
+        // ③ История
+        currentSession.addMessage(Message.user(text));
         appendBubble(Role.USER, text);
         sessionManager.save(currentSession);
-
         maybeAutoTitle(text);
 
-        // ⑤ Стриминг — передаём runtime вместо profile
+        // ④ Стриминг
         var sb = new StringBuilder();
         streamingText = new javafx.scene.text.Text();
         streamingText.setStyle("-fx-fill: #cdd6f4;");
         appendBubbleNode(Role.ASSISTANT, streamingText);
 
         llmClient.stream(
-                runtime,           // ← RuntimeProfile вместо LlmProfile
+                runtime,
                 result.request(),
                 token -> Platform.runLater(() -> {
                     sb.append(token);
@@ -201,6 +217,8 @@ public class ChatView extends BorderPane {
         );
     }
 
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
     private void maybeAutoTitle(String userInput) {
         if (currentSession == null) return;
         if (!"New Session".equals(currentSession.title)) return;
@@ -212,13 +230,12 @@ public class ChatView extends BorderPane {
         currentSession.title = title;
         sessionManager.save(currentSession);
 
-        if (onSessionTitleChanged != null) {
+        if (onSessionTitleChanged != null)
             Platform.runLater(onSessionTitleChanged);
-        }
     }
 
     private void appendBubble(Role role, String content) {
-        var text = new javafx.scene.text.Text(content);
+        var text = new javafx.scene.text.Text(content != null ? content : "");
         text.setStyle("-fx-fill: #cdd6f4;");
         appendBubbleNode(role, text);
     }
@@ -257,9 +274,5 @@ public class ChatView extends BorderPane {
         var btn = new Button(label);
         btn.setStyle(Styles.BTN_GHOST);
         return btn;
-    }
-
-    public Session getCurrentSession() {
-        return currentSession;
     }
 }

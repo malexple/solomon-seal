@@ -8,6 +8,7 @@ import ru.mcs.llmrobot.core.context.ContextBuilder;
 import ru.mcs.llmrobot.core.index.IndexManager;
 import ru.mcs.llmrobot.core.llm.OpenAiCompatibleClient;
 import ru.mcs.llmrobot.core.session.SessionManager;
+import ru.mcs.llmrobot.core.tools.ToolRegistry;
 
 public class MainWindow extends BorderPane {
 
@@ -15,15 +16,21 @@ public class MainWindow extends BorderPane {
             AppState appState,
             SessionManager sessionManager,
             OpenAiCompatibleClient llmClient,
-            ContextBuilder contextBuilder,
-            IndexManager indexManager
+            ContextBuilder contextBuilder
     ) {
-        var debugPanel      = new DebugPanel();
-        var chatView        = new ChatView(appState, sessionManager, llmClient, contextBuilder, debugPanel);
+        var debugPanel          = new DebugPanel();
+        var confirmationHandler = new JavaFxConfirmationHandler();
+        var indexManager        = new IndexManager();
+        var toolRegistry        = new ToolRegistry();
+
+        var chatView = new ChatView(
+                appState, sessionManager, llmClient, contextBuilder,
+                debugPanel, toolRegistry, indexManager, confirmationHandler
+        );
+
         var sessionListView = new SessionListView(sessionManager, chatView, indexManager);
         var topBar          = new TopBar(appState, sessionManager, chatView, debugPanel);
 
-        // когда сессия авто-переименовывается — обновляем список и проекты
         chatView.setOnSessionTitleChanged(() -> {
             sessionListView.refresh();
             sessionListView.refreshProjects();
@@ -38,7 +45,6 @@ public class MainWindow extends BorderPane {
         setTop(topBar);
         setCenter(mainSplit);
 
-        // авто-выбор первой сессии или создание новой
         var sessions = sessionManager.getAll();
         if (!sessions.isEmpty()) {
             chatView.loadSession(sessions.get(0));
