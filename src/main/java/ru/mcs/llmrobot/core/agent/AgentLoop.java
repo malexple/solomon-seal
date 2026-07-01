@@ -82,6 +82,14 @@ public class AgentLoop {
                 // ② Извлекаем tool_calls
                 var toolCalls = parser.parseResponse(responseJson);
 
+                if (toolCalls.isEmpty()) {
+                    var content = extractContent(responseJson);
+                    var textCalls = parser.parseFromText(content);
+                    if (!textCalls.isEmpty()) {
+                        toolCalls = textCalls;
+                    }
+                }
+
                 // ③ Нет tool_calls → финальный ответ
                 if (toolCalls.isEmpty()) {
                     var answer = extractContent(responseJson);

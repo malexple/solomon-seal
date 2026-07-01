@@ -33,9 +33,9 @@ public class FindSymbolTool implements AgentTool {
     public CompletableFuture<ToolResult> execute(Map<String, Object> args, ExecutionContext ctx) {
         return CompletableFuture.supplyAsync(() -> {
             var query = (String) args.get("query");
-            if (query == null || query.isBlank())
-                return ToolResult.fail("query is required");
-
+            if (query == null || query.isBlank()) {
+                query = "";
+            }
             String kindFilter    = (String) args.get("kind");
             String projectFilter = (String) args.get("project");
             int    limit         = args.containsKey("limit")

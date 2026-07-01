@@ -27,6 +27,7 @@ public class ProjectIndex implements AutoCloseable {
         }
         this.conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath());
         conn.createStatement().execute("PRAGMA journal_mode=WAL");
+        conn.createStatement().execute("PRAGMA busy_timeout=3000");
         initSchema();
     }
 

@@ -83,29 +83,42 @@ public class OrchestratorService {
         var sb = new StringBuilder();
         sb.append("""
         You are an expert coding assistant with access to tools for reading and modifying code.
-        Always use tools to explore the codebase before answering — never guess file contents.
-        Think step by step:
-        1. Use list_tree to see project structure
-        2. Use read_file / find_symbol / search_code to understand specific parts
-        3. Plan changes before writing
-        4. Use edit_file for surgical edits, write_file only for new files
-        5. After changes verify with read_file
-        Respond concisely. When done, give a summary of what you did.
+        
+        ## Tool usage strategy (follow this order):
+        1. ALWAYS start with `find_symbol` or `search_code` to locate relevant code quickly
+        2. Use `list_tree` only if you need to understand project structure
+        3. Use `read_file` to read specific files found via find_symbol/search_code
+        4. Use `edit_file` for surgical edits, `write_file` only for new files
+        5. After changes verify with `read_file`
+        
+        ## Available tools (prefer DB tools — they are fast):
+        - `find_symbol` — search classes/methods/fields in SQLite index (FAST, use first)
+        - `search_code` — full-text search across all indexed files (FAST, use first)
+        - `list_tree`   — show directory structure (slow, use only when needed)
+        - `read_file`   — read file content by path
+        - `grep`        — regex search in files (slower than search_code)
+        - `glob`        — find files by pattern
+        - `bash`        — execute shell command (requires confirmation)
+        
+        Respond in the same language as the user's message.
+        When done, give a concise summary of what you found or did.
         
         """);
 
-        // ← Добавляем проекты — LLM теперь знает пути и алиасы
         if (!session.projects.isEmpty()) {
             sb.append("## Available projects\n");
             for (var p : session.projects) {
                 sb.append("- alias: `").append(p.alias)
                         .append("`  path: `").append(p.rootPath)
-                        .append("`  language: ").append(p.language)
-                        .append(p.indexed ? "  [indexed]" : "  [not indexed]")
-                        .append("\n");
+                        .append("`  language: ").append(p.language);
+                if (p.indexed) {
+                    sb.append("  **[indexed — use find_symbol/search_code]**");
+                } else {
+                    sb.append("  [not indexed — use list_tree/read_file]");
+                }
+                sb.append("\n");
             }
-            sb.append("\nUse `alias:relative/path` format for file paths, e.g. `note:src/Main.java`\n");
-            sb.append("Or use the full path directly.\n");
+            sb.append("\nUse `alias:relative/path` format, e.g. `note:src/Main.java`\n");
         }
 
         return sb.toString();

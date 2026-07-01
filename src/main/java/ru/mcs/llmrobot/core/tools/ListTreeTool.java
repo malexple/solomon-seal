@@ -33,7 +33,12 @@ public class ListTreeTool implements AgentTool {
     public CompletableFuture<ToolResult> execute(Map<String, Object> args, ExecutionContext ctx) {
         return CompletableFuture.supplyAsync(() -> {
             var dirStr = (String) args.get("dir");
-            if (dirStr == null) return ToolResult.fail("dir is required");
+            if ((dirStr == null || dirStr.isBlank()) && !ctx.projects.isEmpty()) {
+                dirStr = ctx.projects.get(0).rootPath;
+            }
+            if (dirStr == null || dirStr.isBlank())
+                return ToolResult.fail("dir is required and no projects are attached to session");
+
             int depth = args.containsKey("depth")
                     ? ((Number) args.get("depth")).intValue() : 3;
             var sb = new StringBuilder();

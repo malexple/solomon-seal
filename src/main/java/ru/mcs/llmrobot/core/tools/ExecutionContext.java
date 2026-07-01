@@ -39,13 +39,16 @@ public class ExecutionContext {
     public java.nio.file.Path resolvePath(String path) {
         if (path == null) return null;
         int colon = path.indexOf(':');
-        // Пропускаем Windows drive letters (C:\...)
         if (colon > 1) {
             var alias = path.substring(0, colon);
-            var rel   = path.substring(colon + 1);
+            var rel = path.substring(colon + 1);
             for (var p : projects) {
                 if (p.alias.equals(alias)) return p.resolve(rel);
             }
+        }
+
+        for (var p : projects) {
+            if (p.alias.equals(path)) return p.root();
         }
         return java.nio.file.Path.of(path);
     }
