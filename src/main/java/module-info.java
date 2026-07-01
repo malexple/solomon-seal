@@ -1,4 +1,4 @@
-module ru.mcs.llmrobot {
+module ru.mcs.solomonseal {
     requires java.net.http;
     requires com.fasterxml.jackson.databind;
     requires com.fasterxml.jackson.datatype.jsr310;
@@ -8,24 +8,24 @@ module ru.mcs.llmrobot {
     requires org.xerial.sqlitejdbc;
     requires com.github.javaparser.core;
 
-    exports ru.mcs.llmrobot.core.session;
-    exports ru.mcs.llmrobot.core.context;
-    exports ru.mcs.llmrobot.core.llm;
-    exports ru.mcs.llmrobot.core.tools;
-    exports ru.mcs.llmrobot.core.projects;
-    exports ru.mcs.llmrobot.core.tokens;
-    exports ru.mcs.llmrobot.core.config;
-    exports ru.mcs.llmrobot.core.app;
-    exports ru.mcs.llmrobot.app.javafx;
-    exports ru.mcs.llmrobot.app.javafx.ui;
-    exports ru.mcs.llmrobot.app.tui;
-    exports ru.mcs.llmrobot.core.index;
-    exports ru.mcs.llmrobot.core.agent;
+    exports ru.mcs.solomonseal.core.session;
+    exports ru.mcs.solomonseal.core.context;
+    exports ru.mcs.solomonseal.core.llm;
+    exports ru.mcs.solomonseal.core.tools;
+    exports ru.mcs.solomonseal.core.projects;
+    exports ru.mcs.solomonseal.core.tokens;
+    exports ru.mcs.solomonseal.core.config;
+    exports ru.mcs.solomonseal.core.app;
+    exports ru.mcs.solomonseal.app.javafx;
+    exports ru.mcs.solomonseal.app.javafx.ui;
+    exports ru.mcs.solomonseal.app.tui;
+    exports ru.mcs.solomonseal.core.index;
+    exports ru.mcs.solomonseal.core.agent;
 
-    opens ru.mcs.llmrobot.core.agent to com.fasterxml.jackson.databind;
-    opens ru.mcs.llmrobot.core.session to com.fasterxml.jackson.databind;
-    opens ru.mcs.llmrobot.core.llm     to com.fasterxml.jackson.databind;
-    opens ru.mcs.llmrobot.core.context to com.fasterxml.jackson.databind;
-    opens ru.mcs.llmrobot.core.config  to com.fasterxml.jackson.databind;
-    opens  ru.mcs.llmrobot.core.projects to com.fasterxml.jackson.databind;
+    opens ru.mcs.solomonseal.core.agent to com.fasterxml.jackson.databind;
+    opens ru.mcs.solomonseal.core.session to com.fasterxml.jackson.databind;
+    opens ru.mcs.solomonseal.core.llm     to com.fasterxml.jackson.databind;
+    opens ru.mcs.solomonseal.core.context to com.fasterxml.jackson.databind;
+    opens ru.mcs.solomonseal.core.config  to com.fasterxml.jackson.databind;
+    opens  ru.mcs.solomonseal.core.projects to com.fasterxml.jackson.databind;
 }

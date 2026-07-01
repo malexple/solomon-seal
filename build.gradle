@@ -42,8 +42,8 @@ dependencies {
 }
 
 application {
-    mainModule = 'ru.mcs.llmrobot'
-    mainClass = 'ru.mcs.llmrobot.app.javafx.LlmRobotApp'
+    mainModule = 'ru.mcs.solomonseal'
+    mainClass = 'ru.mcs.solomonseal.app.javafx.LlmRobotApp'
 }
 
 test {
@@ -52,6 +52,6 @@ test {
 
 jar {
     manifest {
-        attributes 'Main-Class': 'ru.mcs.llmrobot.app.javafx.LlmRobotApp'
+        attributes 'Main-Class': 'ru.mcs.solomonseal.app.javafx.LlmRobotApp'
     }
 }
