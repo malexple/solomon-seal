@@ -14,6 +14,7 @@ public class LlmProfile {
     @JsonProperty public String baseUrl  = "http://localhost:11434/v1";
     @JsonProperty public String modelId  = "";
     @JsonProperty public ProviderType type = ProviderType.OPENAI_COMPATIBLE;
+    @JsonProperty public boolean trustSelfSignedCert = false;
 
     public LlmProfile() {}
 

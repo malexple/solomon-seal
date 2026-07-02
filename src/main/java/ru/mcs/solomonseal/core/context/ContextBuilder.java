@@ -16,7 +16,11 @@ import java.util.ArrayList;
 
 /**
  * Builds ChatRequest from Session + user query + RuntimeProfile.
- * This is the heart of "what gets sent to the model".
+ *
+ * ВАЖНО: Qwen3.5-35B-A3B-FP8 (и ряд других моделей через vLLM) требует
+ * чтобы system message был ровно один и только первым в списке.
+ * Поэтому весь контекст (проект, файл, agentContext) конкатенируется
+ * в единый system prompt — никаких дополнительных system messages.
  */
 public class ContextBuilder {
 
@@ -28,42 +32,67 @@ public class ContextBuilder {
 
     public record BuildResult(ChatRequest request, DebugPayload debug) {}
 
+    /**
+     * Основной метод — без agentContext (ASK режим).
+     */
     public BuildResult build(Session session, RuntimeProfile profile, String userInput) {
+        return build(session, profile, userInput, null);
+    }
+
+    /**
+     * Расширенный метод — с agentContext от оркестратора (PLAN/BUILD режим).
+     * agentContext объединяется с system prompt, не добавляется отдельным сообщением.
+     */
+    public BuildResult build(Session session, RuntimeProfile profile, String userInput, String agentContext) {
         var messages = new ArrayList<ChatMessage>();
 
-        // 1. System prompt
-        messages.add(new ChatMessage("system", DEFAULT_SYSTEM_PROMPT));
+        // 1. Собираем единый system prompt — всё в одном сообщении
+        var systemPrompt = new StringBuilder(DEFAULT_SYSTEM_PROMPT);
 
-        // 2. Context by profile
         switch (session.contextProfile) {
             case MINIMAL -> {
-                // only history + user message
+                // only history + usGjcvjneer message
             }
             case CURRENT_FILE -> {
                 var fileContext = buildCurrentFileContext(session);
-                if (fileContext != null) messages.add(new ChatMessage("system", fileContext));
+                if (fileContext != null) {
+                    systemPrompt.append("\n\n").append(fileContext);
+                }
             }
             case PROJECT_SUMMARY -> {
                 var treeContext = buildProjectTreeContext(session);
-                if (treeContext != null) messages.add(new ChatMessage("system", treeContext));
+                if (treeContext != null) {
+                    systemPrompt.append("\n\n").append(treeContext);
+                }
             }
-            default -> {} // FILE_SET, SELECTION handled externally
+            default -> {} // MINIMAL, FILE_SET, SELECTION
         }
 
-        // 3. History (last 20 messages)
+        // Контекст от оркестратора дописываем в тот же system prompt
+        if (agentContext != null && !agentContext.isBlank()) {
+            systemPrompt.append("\n\n## Agent Context\n").append(agentContext);
+        }
+
+        // Единственный system message — всегда первый
+        messages.add(new ChatMessage("system", systemPrompt.toString()));
+
+        // 2. History (last 20 messages) — только user/assistant/tool, без system
         var history = session.history;
         var start = Math.max(0, history.size() - 20);
         for (int i = start; i < history.size(); i++) {
-            messages.add(toWire(history.get(i)));
+            var msg = history.get(i);
+            // Пропускаем system сообщения из истории — они уже в system prompt выше
+            if (msg.role == ru.mcs.solomonseal.core.session.Role.SYSTEM) continue;
+            messages.add(toWire(msg));
         }
 
-        // 4. Current user message
+        // 3. Current user message
         messages.add(new ChatMessage("user", userInput));
 
-        // 5. Build request
+        // 4. Build request
         var request = new ChatRequest(profile.modelId(), messages, true, 4096);
 
-        // 6. Build debug payload
+        // 5. Build debug payload
         int tokens = TokenEstimator.estimateMessages(messages);
         String rawJson;
         try {
@@ -123,8 +152,8 @@ public class ContextBuilder {
                     .sorted()
                     .toList();
             for (int i = 0; i < entries.size(); i++) {
-                var entry = entries.get(i);
-                var last  = (i == entries.size() - 1);
+                var entry   = entries.get(i);
+                var last    = (i == entries.size() - 1);
                 sb.append(prefix).append(last ? "└── " : "├── ")
                         .append(entry.getFileName()).append("\n");
                 if (Files.isDirectory(entry)) {

@@ -38,14 +38,19 @@ public class OrchestratorSettingsPane extends VBox {
         maxStepsSpinner.setEditable(true);
         maxStepsSpinner.setStyle(Styles.INPUT);
 
+        var trustSelfSignedCheck = new CheckBox("Trust self-signed certificate (insecure)");
+        trustSelfSignedCheck.setSelected(profile.trustSelfSignedCert);
+        trustSelfSignedCheck.setStyle("-fx-text-fill: #cdd6f4;");
+
         var saveBtn = new Button("Save");
         saveBtn.setStyle(Styles.BTN_PRIMARY);
         saveBtn.setOnAction(e -> {
-            profile.enabled   = enabledCheck.isSelected();
-            profile.baseUrl   = urlField.getText().trim();
-            profile.apiKey    = apiKeyField.getText().trim();
-            profile.modelId   = modelField.getText().trim();
-            profile.maxSteps  = maxStepsSpinner.getValue();
+            profile.enabled             = enabledCheck.isSelected();
+            profile.baseUrl             = urlField.getText().trim();
+            profile.apiKey              = apiKeyField.getText().trim();
+            profile.modelId             = modelField.getText().trim();
+            profile.maxSteps            = maxStepsSpinner.getValue();
+            profile.trustSelfSignedCert = trustSelfSignedCheck.isSelected();
             appState.saveConfig();
         });
 
@@ -55,11 +60,13 @@ public class OrchestratorSettingsPane extends VBox {
             apiKeyField.setDisable(!enabled);
             modelField.setDisable(!enabled);
             maxStepsSpinner.setDisable(!enabled);
+            trustSelfSignedCheck.setDisable(!enabled);
         });
         urlField.setDisable(!profile.enabled);
         apiKeyField.setDisable(!profile.enabled);
         modelField.setDisable(!profile.enabled);
         maxStepsSpinner.setDisable(!profile.enabled);
+        trustSelfSignedCheck.setDisable(!profile.enabled);
 
         var hint = new Label(
                 "Recommended: Ollama with qwen2.5-coder:7b or deepseek-coder:6.7b\n" +
@@ -68,6 +75,13 @@ public class OrchestratorSettingsPane extends VBox {
         hint.setStyle(Styles.LABEL_MUTED);
         hint.setWrapText(true);
 
+        var sslHint = new Label(
+                "Enable only for trusted internal endpoints (localhost, VPN, LAN).\n" +
+                        "Disables SSL certificate chain validation."
+        );
+        sslHint.setStyle(Styles.LABEL_MUTED);
+        sslHint.setWrapText(true);
+
         getChildren().addAll(
                 enabledCheck,
                 new Separator(),
@@ -75,6 +89,8 @@ public class OrchestratorSettingsPane extends VBox {
                 label("API Key"),  apiKeyField,
                 label("Model"),    modelField,
                 label("Max agent steps"), maxStepsSpinner,
+                trustSelfSignedCheck,
+                sslHint,
                 new Separator(),
                 hint,
                 saveBtn

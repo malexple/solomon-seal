@@ -5,11 +5,13 @@
 package ru.mcs.solomonseal.core.llm;
 
 /** Полный runtime-профиль: публичные данные + секрет для одного запроса. */
-public record RuntimeProfile(String baseUrl, String apiKey, String modelId) {
-    public static RuntimeProfile of(
-            ru.mcs.solomonseal.core.config.LlmProfile profile,
-            String apiKey
-    ) {
-        return new RuntimeProfile(profile.baseUrl, apiKey, profile.modelId);
+
+import ru.mcs.solomonseal.core.config.LlmProfile;
+
+/** Полный runtime-профиль: публичные данные + секрет для одного запроса. */
+public record RuntimeProfile(String baseUrl, String apiKey, String modelId, boolean trustSelfSignedCert) {
+
+    public static RuntimeProfile of(LlmProfile profile, String apiKey) {
+        return new RuntimeProfile(profile.baseUrl, apiKey, profile.modelId, profile.trustSelfSignedCert);
     }
 }

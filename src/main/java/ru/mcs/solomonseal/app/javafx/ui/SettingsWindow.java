@@ -23,6 +23,7 @@ public class SettingsWindow extends Stage {
     private final TextField            modelField   = new TextField();
     private final PasswordField        apiKeyField  = new PasswordField();
     private final ComboBox<ProviderType> typeBox    = new ComboBox<>();
+    private final CheckBox             trustSelfSignedCheck = new CheckBox("Trust self-signed certificate (insecure)");
     private LlmProfile editing = null;
 
     public SettingsWindow(Window owner, AppState appState) {
@@ -56,7 +57,7 @@ public class SettingsWindow extends Stage {
         return t;
     }
 
-    // ── Profiles pane (без изменений) ─────────────────────────────────────────
+    // ── Profiles pane ────────────────────────────────────────────────────────
 
     private BorderPane buildProfilesPane() {
         var addBtn = new Button("+ Add");
@@ -76,6 +77,8 @@ public class SettingsWindow extends Stage {
         typeBox.setValue(ProviderType.OPENAI_COMPATIBLE);
         typeBox.setMaxWidth(Double.MAX_VALUE);
 
+        trustSelfSignedCheck.setStyle("-fx-text-fill: #cdd6f4;");
+
         var form = new GridPane();
         form.setHgap(10);
         form.setVgap(10);
@@ -87,11 +90,20 @@ public class SettingsWindow extends Stage {
         addRow(form, 2, "Model ID", modelField);
         addRow(form, 3, "API Key",  apiKeyField);
         addRow(form, 4, "Type",     typeBox);
+        addRow(form, 5, "",         trustSelfSignedCheck);
 
         for (var field : new Control[]{nameField, urlField, modelField, apiKeyField}) {
             field.setStyle(Styles.INPUT);
             field.setMaxWidth(Double.MAX_VALUE);
         }
+
+        var sslHint = new Label(
+                "Enable only for trusted internal endpoints (localhost, VPN, LAN).\n" +
+                        "Disables SSL certificate chain validation."
+        );
+        sslHint.setStyle(Styles.LABEL_MUTED);
+        sslHint.setWrapText(true);
+        form.add(sslHint, 1, 6);
 
         var deleteBtn = new Button("Delete");
         deleteBtn.setStyle(Styles.BTN_GHOST);
@@ -121,10 +133,10 @@ public class SettingsWindow extends Stage {
         return root;
     }
 
-    // ── Helpers (без изменений) ───────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private void addRow(GridPane grid, int row, String labelText, javafx.scene.Node field) {
-        var label = new Label(labelText + ":");
+        var label = new Label(labelText.isEmpty() ? "" : labelText + ":");
         label.setStyle(Styles.LABEL_MUTED);
         label.setAlignment(Pos.CENTER_RIGHT);
         label.setMaxWidth(Double.MAX_VALUE);
@@ -144,6 +156,7 @@ public class SettingsWindow extends Stage {
         modelField.setText(p.modelId);
         apiKeyField.setText(appState.getApiKey(p.id));
         typeBox.setValue(p.type);
+        trustSelfSignedCheck.setSelected(p.trustSelfSignedCert);
     }
 
     private void newProfile() {
@@ -153,6 +166,7 @@ public class SettingsWindow extends Stage {
         modelField.setText("");
         apiKeyField.setText("");
         typeBox.setValue(ProviderType.OPENAI_COMPATIBLE);
+        trustSelfSignedCheck.setSelected(false);
         profileList.getSelectionModel().clearSelection();
     }
 
@@ -172,6 +186,7 @@ public class SettingsWindow extends Stage {
         profile.baseUrl = url;
         profile.modelId = model;
         profile.type    = typeBox.getValue();
+        profile.trustSelfSignedCert = trustSelfSignedCheck.isSelected();
 
         appState.setApiKey(profile.id, apiKey);
         appState.saveProfile(profile);

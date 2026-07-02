@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.mcs.solomonseal.core.config.OrchestratorProfile;
 import ru.mcs.solomonseal.core.llm.ChatMessage;
+import ru.mcs.solomonseal.core.llm.InsecureSslUtil;
 import ru.mcs.solomonseal.core.tools.AgentTool;
 import ru.mcs.solomonseal.core.tools.ExecutionContext;
 import ru.mcs.solomonseal.core.tools.ToolRegistry;
@@ -32,13 +33,12 @@ public class AgentLoop {
     private final ToolRegistry        toolRegistry;
     private final ToolCallParser      parser = new ToolCallParser();
     private final ObjectMapper        mapper = new ObjectMapper();
-    private final HttpClient          http   = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    private final HttpClient http;
 
     public AgentLoop(OrchestratorProfile config, ToolRegistry toolRegistry) {
         this.config       = config;
         this.toolRegistry = toolRegistry;
+        this.http         = ru.mcs.solomonseal.core.llm.InsecureSslUtil.buildClient(config.trustSelfSignedCert);
     }
 
     /**

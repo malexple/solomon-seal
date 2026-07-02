@@ -11,6 +11,7 @@ public class OrchestratorProfile {
     public String  modelId   = "qwen2.5-coder:7b";
     public int     maxTokens = 4096;
     public int     maxSteps  = 10;   // макс итераций AgentLoop
+    public boolean trustSelfSignedCert = false;
 
     public OrchestratorProfile() {}
 }

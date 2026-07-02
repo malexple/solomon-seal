@@ -226,12 +226,7 @@ public class ChatView extends BorderPane {
         var apiKey  = appState.getApiKey(profile.id);
         var runtime = RuntimeProfile.of(profile, apiKey);
 
-        // Если есть контекст от оркестратора — временно добавляем в сессию
-        if (agentContext != null && !agentContext.isBlank()) {
-            currentSession.addMessage(Message.system(agentContext));
-        }
-
-        var result = contextBuilder.build(currentSession, runtime, userText);
+        var result = contextBuilder.build(currentSession, runtime, userText, agentContext);
         debugPanel.show(result.debug());
         tokenLabel.setText(result.debug().estimatedTokens() + " tokens");
 
@@ -248,14 +243,18 @@ public class ChatView extends BorderPane {
                     scrollToBottom();
                 }),
                 () -> Platform.runLater(() -> {
-                    currentSession.addMessage(Message.assistant(sb.toString()));
-                    // Убираем временный system-контекст от оркестратора
-                    currentSession.history.removeIf(
-                            m -> m.role == Role.SYSTEM && m.content != null
-                                    && m.content.startsWith("# Project Context"));
+                    var mainAnswer = sb.toString();
+                    currentSession.addMessage(Message.assistant(mainAnswer));
                     sessionManager.save(currentSession);
-                    sendBtn.setDisable(false);
-                    statusLabel.setText("");
+
+                    // ── PLAN/BUILD: запускаем второй AgentLoop чтобы применить код ──
+                    if (currentSession.mode == SessionMode.PLAN
+                            || currentSession.mode == SessionMode.BUILD) {
+                        applyWithAgent(mainAnswer, userText);
+                    } else {
+                        sendBtn.setDisable(false);
+                        statusLabel.setText("");
+                    }
                 }),
                 err -> Platform.runLater(() -> {
                     streamingText.setText("Error: " + err.getMessage());
@@ -288,24 +287,6 @@ public class ChatView extends BorderPane {
         appendBubbleNode(role, text);
     }
 
-    private void appendBubbleNode(Role role, javafx.scene.Node contentNode) {
-        var label = new Label(role == Role.USER ? "You" : "Assistant");
-        label.setStyle(role == Role.USER ? Styles.LABEL_USER : Styles.LABEL_ASSISTANT);
-
-        var textFlow = new TextFlow(contentNode);
-        textFlow.setMaxWidth(700);
-        textFlow.setStyle(role == Role.USER ? Styles.BUBBLE_USER : Styles.BUBBLE_ASSISTANT);
-
-        var box = new VBox(2, label, textFlow);
-        box.setAlignment(role == Role.USER ? Pos.CENTER_RIGHT : Pos.CENTER_LEFT);
-        box.setMaxWidth(Double.MAX_VALUE);
-
-        Platform.runLater(() -> {
-            messageList.getChildren().add(box);
-            scrollToBottom();
-        });
-    }
-
     private void scrollToBottom() {
         Platform.runLater(() -> scrollPane.setVvalue(1.0));
     }
@@ -322,5 +303,119 @@ public class ChatView extends BorderPane {
         var btn = new Button(label);
         btn.setStyle(Styles.BTN_GHOST);
         return btn;
+    }
+
+    private void appendBubbleNode(Role role, javafx.scene.Node contentNode) {
+        appendBubbleNode(role, contentNode, null);
+    }
+
+    private void appendBubbleNode(Role role, javafx.scene.Node contentNode, String rawContent) {
+        var label = new Label(role == Role.USER ? "You" : "Assistant");
+        label.setStyle(role == Role.USER ? Styles.LABEL_USER : Styles.LABEL_ASSISTANT);
+
+        var textFlow = new TextFlow(contentNode);
+        textFlow.setMaxWidth(700);
+        textFlow.setStyle(role == Role.USER ? Styles.BUBBLE_USER : Styles.BUBBLE_ASSISTANT);
+
+        // ── Copy button ──────────────────────────────────────────────────
+        var copyBtn = new Button("⧉");
+        copyBtn.setStyle(
+                "-fx-background-color: transparent; -fx-text-fill: #6c7086;" +
+                        "-fx-font-size: 12px; -fx-cursor: hand; -fx-padding: 0 4 0 4;"
+        );
+        copyBtn.setTooltip(new Tooltip("Copy message"));
+        copyBtn.setOnAction(e -> copyToClipboard(
+                rawContent != null ? rawContent : extractTextFrom(contentNode)
+        ));
+        copyBtn.setOnMouseEntered(e -> copyBtn.setStyle(
+                copyBtn.getStyle().replace("#6c7086", "#89b4fa")
+        ));
+        copyBtn.setOnMouseExited(e -> copyBtn.setStyle(
+                copyBtn.getStyle().replace("#89b4fa", "#6c7086")
+        ));
+
+        var header = new HBox(6, label, Spacer.h(), copyBtn);
+        header.setAlignment(role == Role.USER ? Pos.CENTER_RIGHT : Pos.CENTER_LEFT);
+
+        // ── Context menu (правый клик → Copy) ───────────────────────────
+        var contextMenu = new ContextMenu();
+        var copyItem = new MenuItem("Copy");
+        copyItem.setOnAction(e -> copyToClipboard(
+                rawContent != null ? rawContent : extractTextFrom(contentNode)
+        ));
+        contextMenu.getItems().add(copyItem);
+        textFlow.setOnContextMenuRequested(e ->
+                contextMenu.show(textFlow, e.getScreenX(), e.getScreenY())
+        );
+
+        var box = new VBox(2, header, textFlow);
+        box.setAlignment(role == Role.USER ? Pos.CENTER_RIGHT : Pos.CENTER_LEFT);
+        box.setMaxWidth(Double.MAX_VALUE);
+
+        Platform.runLater(() -> {
+            messageList.getChildren().add(box);
+            scrollToBottom();
+        });
+    }
+
+    private void copyToClipboard(String text) {
+        var clipboard = javafx.scene.input.Clipboard.getSystemClipboard();
+        var content = new javafx.scene.input.ClipboardContent();
+        content.putString(text != null ? text : "");
+        clipboard.setContent(content);
+        statusLabel.setText("Copied to clipboard");
+    }
+
+    private String extractTextFrom(javafx.scene.Node node) {
+        if (node instanceof javafx.scene.text.Text t) return t.getText();
+        return "";
+    }
+
+    /**
+     * Второй проход AgentLoop — маленькая модель применяет код
+     * который сгенерировала основная модель.
+     */
+    private void applyWithAgent(String mainModelAnswer, String originalUserText) {
+        statusLabel.setText("Applying changes…");
+
+        // Задание для маленькой модели: применить то что сказала основная
+        var applyPrompt = """
+            The main AI has analyzed the codebase and provided the following solution:
+            
+            %s
+            
+            Your task: apply these changes to the actual files using edit_file or write_file tools.
+            - Read the relevant files first if needed
+            - Apply exactly what is described above
+            - After applying, confirm what was changed
+            """.formatted(mainModelAnswer);
+
+        var applyBubble = new javafx.scene.text.Text("Applying changes…");
+        applyBubble.setStyle("-fx-fill: #a6e3a1;");  // зелёный — отличается от основного ответа
+        appendBubbleNode(Role.ASSISTANT, applyBubble);
+
+        orchestratorService.run(
+                currentSession,
+                applyPrompt,
+                confirmationHandler,
+                step -> Platform.runLater(() ->
+                        applyBubble.setText(applyBubble.getText() + "\n" + step))
+        ).thenAccept(applyResult -> Platform.runLater(() -> {
+            if (applyResult.success()) {
+                var summary = applyResult.finalAnswer();
+                if (summary != null && !summary.isBlank()) {
+                    applyBubble.setText(applyBubble.getText() + "\n\n✓ " + summary);
+                } else {
+                    applyBubble.setText(applyBubble.getText() + "\n\n✓ Done");
+                }
+                currentSession.addMessage(Message.assistant(
+                        "Applied: " + (summary != null ? summary : "changes applied")));
+                sessionManager.save(currentSession);
+            } else {
+                applyBubble.setText(applyBubble.getText() + "\n\n✗ " + applyResult.error());
+            }
+            sendBtn.setDisable(false);
+            statusLabel.setText("");
+        }));
     }
 }
