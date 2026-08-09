@@ -5,7 +5,8 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.scene.text.TextFlow;
+import javafx.scene.text.Text;
+import javafx.stage.FileChooser;
 import ru.mcs.solomonseal.core.agent.OrchestratorService;
 import ru.mcs.solomonseal.core.app.AppState;
 import ru.mcs.solomonseal.core.config.LlmProfile;
@@ -17,6 +18,12 @@ import ru.mcs.solomonseal.core.session.*;
 import ru.mcs.solomonseal.core.tools.ConfirmationHandler;
 import ru.mcs.solomonseal.core.tools.ExecutionContext;
 import ru.mcs.solomonseal.core.tools.ToolRegistry;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ChatView extends BorderPane {
 
@@ -38,8 +45,11 @@ public class ChatView extends BorderPane {
     private Label                modeLabel;
     private Label                statusLabel;
     private Label                tokenLabel;
-    private javafx.scene.text.Text streamingText;
+    private Text                 streamingText;
     private Runnable             onSessionTitleChanged;
+
+    private final List<File> attachedFiles = new ArrayList<>();
+    private FlowPane attachmentPane;
 
     public ChatView(
             AppState appState,
@@ -68,10 +78,6 @@ public class ChatView extends BorderPane {
     public void setOnSessionTitleChanged(Runnable callback) {
         this.onSessionTitleChanged = callback;
     }
-
-
-
-    // ── UI ────────────────────────────────────────────────────────────────────
 
     private void buildUI() {
         messageList = new VBox(8);
@@ -116,24 +122,37 @@ public class ChatView extends BorderPane {
                 sendMessage();
         });
 
+        attachmentPane = new FlowPane(4, 4);
+        attachmentPane.setPadding(new Insets(4, 0, 4, 0));
+        attachmentPane.setStyle("-fx-background-color: #181825;");
+        attachmentPane.setVisible(false);
+        attachmentPane.setManaged(false);
+
+        Button attachBtn = new Button("📎");
+        attachBtn.setStyle(Styles.BTN_GHOST);
+        attachBtn.setTooltip(new Tooltip("Attach file(s)"));
+        attachBtn.setOnAction(e -> attachFiles());
+
         sendBtn = new Button("Send");
         sendBtn.setStyle(Styles.BTN_PRIMARY);
         sendBtn.setDefaultButton(true);
         sendBtn.setOnAction(e -> sendMessage());
 
-        var composerBar = new HBox(8, composer, sendBtn);
+        VBox composerArea = new VBox(attachmentPane, composer);
+        VBox.setVgrow(composer, Priority.ALWAYS);
+        composerArea.setStyle("-fx-background-color: #181825;");
+
+        HBox composerBar = new HBox(8, attachBtn, composerArea, sendBtn);
         composerBar.setPadding(new Insets(8, 12, 8, 12));
         composerBar.setAlignment(Pos.BOTTOM_RIGHT);
         composerBar.setStyle("-fx-background-color: #181825; -fx-border-color: #313244; -fx-border-width: 1 0 0 0;");
-        HBox.setHgrow(composer, Priority.ALWAYS);
+        HBox.setHgrow(composerArea, Priority.ALWAYS);
 
         setTop(modeBar);
         setCenter(scrollPane);
         setBottom(composerBar);
         setStyle("-fx-background-color: #1e1e2e;");
     }
-
-    // ── Session ───────────────────────────────────────────────────────────────
 
     public void loadSession(Session session) {
         this.currentSession = session;
@@ -158,19 +177,35 @@ public class ChatView extends BorderPane {
         return currentSession;
     }
 
-    /** Создаёт ExecutionContext для текущей сессии */
     public ExecutionContext buildExecutionContext() {
         return new ExecutionContext(currentSession, indexManager, confirmationHandler);
     }
 
-    // ── Send ──────────────────────────────────────────────────────────────────
-
     private void sendMessage() {
         if (currentSession == null) return;
-        var text = composer.getText().trim();
-        if (text.isBlank()) return;
+        String userText = composer.getText().trim();
+        if (userText.isBlank() && attachedFiles.isEmpty()) return;
+
+        StringBuilder fullMessage = new StringBuilder(userText);
+        for (File file : attachedFiles) {
+            try {
+                String content = Files.readString(file.toPath());
+                if (content.length() > 50000) {
+                    content = content.substring(0, 50000) + "\n... [truncated]";
+                }
+                fullMessage.append("\n\n=== File: ").append(file.getName()).append(" ===\n")
+                        .append(content)
+                        .append("\n=== End of ").append(file.getName()).append(" ===\n");
+            } catch (IOException e) {
+                fullMessage.append("\n\n=== File: ").append(file.getName())
+                        .append(" (ERROR: ").append(e.getMessage()).append(") ===\n");
+            }
+        }
+        String finalText = fullMessage.toString();
 
         composer.clear();
+        clearAttachments();
+
         sendBtn.setDisable(true);
         statusLabel.setText("Thinking…");
 
@@ -181,30 +216,30 @@ public class ChatView extends BorderPane {
             return;
         }
 
-        currentSession.addMessage(Message.user(text));
-        appendBubble(Role.USER, text);
-        sessionManager.save(currentSession);
-        maybeAutoTitle(text);
+        appendBubble(Role.USER, finalText);
+        Platform.runLater(() -> {
+            messageList.layout();
+            scrollPane.layout();
+            scrollToBottom();
+        });
+        maybeAutoTitle(finalText);
 
-        // ── PLAN / BUILD → AgentLoop ──────────────────────────────────────
         if (currentSession.mode == SessionMode.PLAN || currentSession.mode == SessionMode.BUILD) {
-            var agentBubble = new javafx.scene.text.Text("Running agent…");
+            var agentBubble = new Text("Running agent…");
             agentBubble.setStyle("-fx-fill: #89b4fa;");
-            appendBubbleNode(Role.ASSISTANT, agentBubble);
+            appendBubbleNode(Role.ASSISTANT, agentBubble, null);
 
             orchestratorService.run(
-                    currentSession, text, confirmationHandler,
+                    currentSession, finalText, confirmationHandler,
                     step -> Platform.runLater(() -> agentBubble.setText(
                             agentBubble.getText() + "\n" + step))
             ).thenAccept(result -> Platform.runLater(() -> {
                 if (result.success()) {
-                    // Лог инструментов
                     if (!result.toolCallLog().isEmpty()) {
                         var log = String.join("\n", result.toolCallLog());
                         agentBubble.setText(log);
                     }
-                    // Финальный ответ передаём в основной LLM
-                    sendToMainLlm(profile, result.finalAnswer(), text);
+                    sendToMainLlm(profile, result.finalAnswer(), finalText);
                 } else {
                     agentBubble.setText("Agent error: " + result.error());
                     sendBtn.setDisable(false);
@@ -214,14 +249,9 @@ public class ChatView extends BorderPane {
             return;
         }
 
-        // ── ASK → прямой запрос к LLM ────────────────────────────────────
-        sendToMainLlm(profile, null, text);
+        sendToMainLlm(profile, null, finalText);
     }
 
-    /**
-     * Отправляет запрос к основной LLM.
-     * agentContext — дополнительный контекст от оркестратора (или null).
-     */
     private void sendToMainLlm(LlmProfile profile, String agentContext, String userText) {
         var apiKey  = appState.getApiKey(profile.id);
         var runtime = RuntimeProfile.of(profile, apiKey);
@@ -231,23 +261,22 @@ public class ChatView extends BorderPane {
         tokenLabel.setText(result.debug().estimatedTokens() + " tokens");
 
         var sb = new StringBuilder();
-        streamingText = new javafx.scene.text.Text();
-        streamingText.setStyle("-fx-fill: #cdd6f4;");
-        appendBubbleNode(Role.ASSISTANT, streamingText);
+        TextArea streamingArea = createMessageTextArea();
+        appendBubbleNode(Role.ASSISTANT, streamingArea, null);
 
         llmClient.stream(
                 runtime, result.request(),
                 token -> Platform.runLater(() -> {
                     sb.append(token);
-                    streamingText.setText(sb.toString());
+                    streamingArea.setText(sb.toString());
                     scrollToBottom();
                 }),
                 () -> Platform.runLater(() -> {
                     var mainAnswer = sb.toString();
+                    currentSession.addMessage(Message.user(userText));
                     currentSession.addMessage(Message.assistant(mainAnswer));
                     sessionManager.save(currentSession);
 
-                    // ── PLAN/BUILD: запускаем второй AgentLoop чтобы применить код ──
                     if (currentSession.mode == SessionMode.PLAN
                             || currentSession.mode == SessionMode.BUILD) {
                         applyWithAgent(mainAnswer, userText);
@@ -257,14 +286,59 @@ public class ChatView extends BorderPane {
                     }
                 }),
                 err -> Platform.runLater(() -> {
-                    streamingText.setText("Error: " + err.getMessage());
+                    streamingArea.setText("Error: " + err.getMessage());
+                    currentSession.addMessage(Message.user(userText));
+                    sessionManager.save(currentSession);
                     sendBtn.setDisable(false);
                     statusLabel.setText("Error");
                 })
         );
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    private void attachFiles() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Select files to attach");
+        List<File> selected = fileChooser.showOpenMultipleDialog(getScene().getWindow());
+        if (selected != null) {
+            for (File file : selected) {
+                addAttachment(file);
+            }
+        }
+    }
+
+    private void addAttachment(File file) {
+        attachedFiles.add(file);
+        updateAttachmentPane();
+    }
+
+    private void clearAttachments() {
+        attachedFiles.clear();
+        updateAttachmentPane();
+    }
+
+    private void updateAttachmentPane() {
+        attachmentPane.getChildren().clear();
+        if (attachedFiles.isEmpty()) {
+            attachmentPane.setVisible(false);
+            attachmentPane.setManaged(false);
+            return;
+        }
+        attachmentPane.setVisible(true);
+        attachmentPane.setManaged(true);
+        for (File file : attachedFiles) {
+            Label fileLabel = new Label(file.getName());
+            fileLabel.setStyle("-fx-text-fill: #89b4fa; -fx-background-color: #313244; -fx-padding: 2 8 2 8; -fx-border-radius: 4; -fx-background-radius: 4;");
+            Button removeBtn = new Button("×");
+            removeBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #f38ba8; -fx-cursor: hand;");
+            removeBtn.setOnAction(e -> {
+                attachedFiles.remove(file);
+                updateAttachmentPane();
+            });
+            HBox item = new HBox(4, fileLabel, removeBtn);
+            item.setAlignment(Pos.CENTER_LEFT);
+            attachmentPane.getChildren().add(item);
+        }
+    }
 
     private void maybeAutoTitle(String userInput) {
         if (currentSession == null) return;
@@ -281,14 +355,38 @@ public class ChatView extends BorderPane {
             Platform.runLater(onSessionTitleChanged);
     }
 
+    private TextArea createMessageTextArea() {
+        TextArea area = new TextArea();
+        area.setEditable(false);
+        area.setWrapText(true);
+        area.setBackground(Background.EMPTY);
+        area.setBorder(Border.EMPTY);
+        area.setStyle(
+                "-fx-text-fill: #cdd6f4; " +
+                        "-fx-font-size: 14px; " +
+                        "-fx-control-inner-background: transparent; " +
+                        "-fx-background-color: transparent; " +
+                        "-fx-border-color: transparent; " +
+                        "-fx-border-width: 0; " +
+                        "-fx-padding: 0; " +
+                        "-fx-background-insets: 0;"
+        );
+        area.setPrefHeight(Region.USE_COMPUTED_SIZE);
+        area.setMaxWidth(700);
+        return area;
+    }
+
     private void appendBubble(Role role, String content) {
-        var text = new javafx.scene.text.Text(content != null ? content : "");
-        text.setStyle("-fx-fill: #cdd6f4;");
-        appendBubbleNode(role, text);
+        TextArea area = createMessageTextArea();
+        area.setText(content != null ? content : "");
+        appendBubbleNode(role, area, content);
     }
 
     private void scrollToBottom() {
-        Platform.runLater(() -> scrollPane.setVvalue(1.0));
+        Platform.runLater(() -> {
+            scrollPane.setVvalue(1.0);
+            scrollPane.layout();
+        });
     }
 
     private void setMode(SessionMode mode) {
@@ -305,20 +403,15 @@ public class ChatView extends BorderPane {
         return btn;
     }
 
-    private void appendBubbleNode(Role role, javafx.scene.Node contentNode) {
-        appendBubbleNode(role, contentNode, null);
-    }
-
     private void appendBubbleNode(Role role, javafx.scene.Node contentNode, String rawContent) {
         var label = new Label(role == Role.USER ? "You" : "Assistant");
         label.setStyle(role == Role.USER ? Styles.LABEL_USER : Styles.LABEL_ASSISTANT);
 
-        var textFlow = new TextFlow(contentNode);
-        textFlow.setMaxWidth(700);
-        textFlow.setStyle(role == Role.USER ? Styles.BUBBLE_USER : Styles.BUBBLE_ASSISTANT);
+        VBox contentBox = new VBox(contentNode);
+        contentBox.setMaxWidth(700);
+        contentBox.setStyle(role == Role.USER ? Styles.BUBBLE_USER : Styles.BUBBLE_ASSISTANT);
 
-        // ── Copy button ──────────────────────────────────────────────────
-        var copyBtn = new Button("⧉");
+        Button copyBtn = new Button("⧉");
         copyBtn.setStyle(
                 "-fx-background-color: transparent; -fx-text-fill: #6c7086;" +
                         "-fx-font-size: 12px; -fx-cursor: hand; -fx-padding: 0 4 0 4;"
@@ -337,23 +430,24 @@ public class ChatView extends BorderPane {
         var header = new HBox(6, label, Spacer.h(), copyBtn);
         header.setAlignment(role == Role.USER ? Pos.CENTER_RIGHT : Pos.CENTER_LEFT);
 
-        // ── Context menu (правый клик → Copy) ───────────────────────────
-        var contextMenu = new ContextMenu();
-        var copyItem = new MenuItem("Copy");
+        ContextMenu contextMenu = new ContextMenu();
+        MenuItem copyItem = new MenuItem("Copy");
         copyItem.setOnAction(e -> copyToClipboard(
                 rawContent != null ? rawContent : extractTextFrom(contentNode)
         ));
         contextMenu.getItems().add(copyItem);
-        textFlow.setOnContextMenuRequested(e ->
-                contextMenu.show(textFlow, e.getScreenX(), e.getScreenY())
+        contentBox.setOnContextMenuRequested(e ->
+                contextMenu.show(contentBox, e.getScreenX(), e.getScreenY())
         );
 
-        var box = new VBox(2, header, textFlow);
+        var box = new VBox(2, header, contentBox);
         box.setAlignment(role == Role.USER ? Pos.CENTER_RIGHT : Pos.CENTER_LEFT);
         box.setMaxWidth(Double.MAX_VALUE);
 
         Platform.runLater(() -> {
             messageList.getChildren().add(box);
+            messageList.layout();
+            scrollPane.layout();
             scrollToBottom();
         });
     }
@@ -367,18 +461,14 @@ public class ChatView extends BorderPane {
     }
 
     private String extractTextFrom(javafx.scene.Node node) {
-        if (node instanceof javafx.scene.text.Text t) return t.getText();
+        if (node instanceof TextArea ta) return ta.getText();
+        if (node instanceof Text t) return t.getText();
         return "";
     }
 
-    /**
-     * Второй проход AgentLoop — маленькая модель применяет код
-     * который сгенерировала основная модель.
-     */
     private void applyWithAgent(String mainModelAnswer, String originalUserText) {
         statusLabel.setText("Applying changes…");
 
-        // Задание для маленькой модели: применить то что сказала основная
         var applyPrompt = """
             The main AI has analyzed the codebase and provided the following solution:
             
@@ -390,29 +480,30 @@ public class ChatView extends BorderPane {
             - After applying, confirm what was changed
             """.formatted(mainModelAnswer);
 
-        var applyBubble = new javafx.scene.text.Text("Applying changes…");
-        applyBubble.setStyle("-fx-fill: #a6e3a1;");  // зелёный — отличается от основного ответа
-        appendBubbleNode(Role.ASSISTANT, applyBubble);
+        TextArea applyArea = createMessageTextArea();
+        applyArea.setText("Applying changes…");
+        appendBubbleNode(Role.ASSISTANT, applyArea, null);
 
         orchestratorService.run(
                 currentSession,
                 applyPrompt,
                 confirmationHandler,
-                step -> Platform.runLater(() ->
-                        applyBubble.setText(applyBubble.getText() + "\n" + step))
+                step -> Platform.runLater(() -> {
+                    applyArea.appendText("\n" + step);
+                })
         ).thenAccept(applyResult -> Platform.runLater(() -> {
             if (applyResult.success()) {
                 var summary = applyResult.finalAnswer();
                 if (summary != null && !summary.isBlank()) {
-                    applyBubble.setText(applyBubble.getText() + "\n\n✓ " + summary);
+                    applyArea.appendText("\n\n✓ " + summary);
                 } else {
-                    applyBubble.setText(applyBubble.getText() + "\n\n✓ Done");
+                    applyArea.appendText("\n\n✓ Done");
                 }
                 currentSession.addMessage(Message.assistant(
                         "Applied: " + (summary != null ? summary : "changes applied")));
                 sessionManager.save(currentSession);
             } else {
-                applyBubble.setText(applyBubble.getText() + "\n\n✗ " + applyResult.error());
+                applyArea.appendText("\n\n✗ " + applyResult.error());
             }
             sendBtn.setDisable(false);
             statusLabel.setText("");
