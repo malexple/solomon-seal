@@ -33,8 +33,15 @@ public class ToolCallParser {
                 for (var tc : toolCalls) {
                     var id   = tc.path("id").asText();
                     var name = tc.path("function").path("name").asText();
-                    var argsStr = tc.path("function").path("arguments").asText();
-                    Map<String, Object> args = parseArgs(argsStr);
+                    var argsNode = tc.path("function").path("arguments");
+                    Map<String, Object> args;
+                    if (argsNode.isTextual()) {
+                        args = parseArgs(argsNode.asText());
+                    } else if (argsNode.isObject()) {
+                        args = mapper.convertValue(argsNode, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+                    } else {
+                        args = Map.of();
+                    }
                     result.add(new ToolCallRequest(id, name, args));
                 }
             }

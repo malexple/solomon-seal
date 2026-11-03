@@ -182,7 +182,11 @@ public class AgentLoop {
             var root      = mapper.readTree(responseJson);
             var msg       = root.path("choices").path(0).path("message");
             var content   = msg.path("content").isNull() ? null : msg.path("content").asText(null);
-            var toolCalls = msg.path("tool_calls").toString();
+            var toolCallsNode = msg.path("tool_calls");
+            List<Map<String, Object>> toolCalls = null;
+            if (toolCallsNode.isArray() && !toolCallsNode.isEmpty()) {
+                toolCalls = mapper.convertValue(toolCallsNode, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+            }
             return new ChatMessageWithToolCalls("assistant", content, toolCalls);
         } catch (Exception e) {
             return new ChatMessage("assistant", "");
@@ -216,16 +220,16 @@ public class AgentLoop {
     // ── Inner message types для tool_calls ───────────────────────────────────
 
     /**
-     * Сообщение ассистента с tool_calls (нестандартные поля для Jackson).
+     * Сообщение ассистента с tool_calls в нативном OpenAI-формате.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class ChatMessageWithToolCalls extends ChatMessage {
-        @JsonProperty("tool_calls_raw")
-        public final String toolCallsRaw;
+        @JsonProperty("tool_calls")
+        public final List<Map<String, Object>> toolCalls;
 
-        public ChatMessageWithToolCalls(String role, String content, String toolCallsRaw) {
+        public ChatMessageWithToolCalls(String role, String content, List<Map<String, Object>> toolCalls) {
             super(role, content);
-            this.toolCallsRaw = toolCallsRaw;
+            this.toolCalls = toolCalls;
         }
     }
 
