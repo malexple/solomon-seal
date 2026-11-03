@@ -1,117 +1,90 @@
 # SolomonSeal — Полный план развития
 
-> Практический roadmap на основе code review, анализа архитектуры BDoc Editor и конкурентного анализа AI coding tools.
+&gt; Практический roadmap на основе code review, анализа архитектуры BDoc Editor и конкурентного анализа AI coding tools.
+
+---
+
+![markmap.svg](markmap.svg)
 
 ---
 
 ## Обзор
 
-**Текущее состояние:** MVP с рабочим агентским циклом, JavaFX UI, SQLite-индексом, режимами Ask/Plan/Build. Монолитный Gradle-модуль, нет тестов, есть баг сериализации `tool_calls`, нет плагинов, нет sandbox, нет undo.
+**Текущее состояние:** ✅ MVP собирается и запускается в модульной архитектуре. Redaction pipeline в разработке.
 
 **Цель:** Прозрачный, контролируемый, расширяемый LLM-оркестратор с встроенной историей изменений, маскированием секретов и плагинной системой.
 
 ---
 
-## Фаза 0: Быстрые победы (1–2 недели)
+## Фаза 0: Быстрые победы ✅ ВЫПОЛНЕНО
 
-Задачи, которые не требуют рефакторинга архитектуры, но устраняют критические дефекты.
+### 0.1 ✅ Исправить сериализацию `tool_calls`
+- `ChatMessageWithToolCalls` теперь хранит `List&lt;Map&lt;String,Object&gt;&gt; toolCalls` с `@JsonProperty("tool_calls")`.
+- Тесты: `AgentLoopSerializationTest` — 4 кейса.
 
-### 0.1 Исправить сериализацию `tool_calls`
-- **Проблема:** `buildAssistantMessage` сохраняет tool_calls в поле `tool_calls_raw`, но LLM API ожидает `tool_calls` массивом объектов.
-- **Результат:** Агентский цикл на втором шаге теряет историю вызовов и дублирует/ломается.
-- **Действие:** При восстановлении assistant-сообщения из истории сериализовать `tool_calls` в корректный OpenAI-формат (`List<ToolCall>` → JSON массив объектов с `id`, `type`, `function`).
+### 0.2 ✅ Объединить HTTP-клиенты
+- `AgentLoop` использует `LlmClient.complete()` вместо собственного `HttpClient`.
 
-### 0.2 Объединить HTTP-клиенты
-- **Проблема:** `AgentLoop` и `OpenAiCompatibleClient` дублируют логику HTTP/JSON.
-- **Действие:** `AgentLoop` должен использовать `OpenAiCompatibleClient` для всех LLM-вызовов. Streaming поддержать через `CompletableFuture` + callback.
+### 0.3 ✅ Юнит-тесты на `ToolCallParser`
+- `ToolCallParserTest` — 15 тестов: три фолбэка, аргументы как объект, аргументы как строка.
 
-### 0.3 Юнит-тесты на `ToolCallParser`
-- **Что тестировать:**
-  - Три фолбэка (`<tool_call>`, ```json-блоки, голый JSON).
-  - Стриминговый аккумулятор (частичные чанки).
-  - Малформированный JSON (graceful degradation).
-- **Почему сейчас:** Это чистая логика, не требует FX/UI. Если сломается при рефакторинге — агент перестанет работать.
-
-### 0.4 Удалить или заморозить TUI и HTTP API
-- **Решение:** Оставить только JavaFX клиент. TUI (269 байт заглушка) и HTTP API отложить до Фазы 4.
-- **Почему:** Три клиента = три продукта. Сейчас нужен один рабочий.
+### 0.4 ✅ Удалить TUI
+- TUI удалён, `module-info.java` обновлён.
 
 ---
 
-## Фаза 1: Архитектурный фундамент (2–3 недели)
+## Фаза 1: Архитектурный фундамент ✅ ВЫПОЛНЕНО
 
-Разделение монолита и внедрение плагинной системы по образцу BDoc Editor.
+### 1.1 ✅ Разбить на Gradle-модули
+| Модуль | Статус |
+|---|---|
+| `solomon-seal-spi` | ✅ Базовые интерфейсы (`AgentTool`, `Session`, `ToolRegistry`, `ExecutionContext`) |
+| `solomon-seal-core` | ✅ AgentLoop, SessionManager, ToolRegistry, LLM-клиент, индекс |
+| `solomon-seal-ui-spi` | ✅ JavaFX-интерфейсы (`ToolbarActionExtension`, `ChatPanelExtension`, `ThemeExtension`) |
+| `solomon-seal-ui` | ✅ JavaFX реализация |
+| `solomon-seal-app` | ✅ Точка входа `Main`, ModuleLayer-загрузчик |
+| `solomon-seal-plugin-demo` | ✅ Демо-плагин с `ServiceLoader` |
 
-### 1.1 Разбить на Gradle-модули
+### 1.2 ✅ `PluginRuntime`, `PluginContext`, `PluginDescriptor`
+- Синглтон `PluginContext` с реестрами.
+- `PluginDescriptor` с валидацией namespace.
+- `BuiltInToolProvider` для встроенных инструментов.
 
-| Модуль | Содержимое | Зависимости |
-|---|---|---|
-| `solomon-seal-core` | AgentLoop, SessionManager, ToolRegistry, LLM-клиент, индекс | Jackson, SQLite JDBC, JavaParser |
-| `solomon-seal-spi` | Интерфейсы: `ToolProvider`, `ContextProfileContributor`, `ConfirmationHandler`, `AppContext` | Только `core` (без JavaFX) |
-| `solomon-seal-ui-spi` | JavaFX-специфичные: `ChatPanelExtension`, `ToolbarActionExtension`, `ThemeExtension`, `DebugPanelContributor` | `spi` + JavaFX |
-| `solomon-seal-ui` | JavaFX реализация: ChatView, DebugPanel, MainWindow, TopBar | `ui-spi`, `core` |
-| `solomon-seal-app` | Точка входа `LlmRobotApp`, загрузчик плагинов | `ui`, `core` |
-| `solomon-seal-plugin-demo` | Демо-плагин (кнопка «Export to Markdown» в чат) | `ui-spi` |
+### 1.3 ✅ Инвертировать `ToolRegistry`
+- `ToolRegistry` опрашивает `PluginContext.collectTools()`.
+- Все инструменты реализуют `spi.AgentTool`.
 
-### 1.2 Создать `PluginRuntime`, `PluginContext`, `PluginDescriptor`
-- `PluginRuntime` — синглтон с `ModuleLayer`, паттерн из BDoc.
-- `PluginDescriptor` — `id`, `namespace` (reverse-domain), `version`, `vendor`, `customData`.
-- `PluginContext` — реестры: `toolProviders`, `contextProfiles`, `chatPanels`, `toolbarActions`, `themes`.
-- **Валидация:** namespace должен соответствовать `^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$`.
+### 1.4 ✅ `ModuleLayer` из `plugins/`
+- `PluginRuntime.loadPlugins(Path)` через `ModuleFinder` + `ServiceLoader`.
+- Гибридная схема: automatic modules для библиотек, named modules для `app`/`plugin-demo`.
 
-### 1.3 Инвертировать `ToolRegistry`
-- **Сейчас:** `ToolRegistry` создаёт инструменты в конструкторе.
-- **Нужно:** `ToolRegistry` опрашивает `PluginContext.getToolProviders()` на старте. Встроенные инструменты (`ReadFileTool`, `EditFileTool`, `BashTool`, `WebFetchTool`) регистрируются через внутренний `BuiltInPlugin`.
-- **Результат:** Плагин может добавить свой инструмент без правки `core`.
-
-### 1.4 Загрузка `ModuleLayer` из `plugins/`
-- Точка входа (`solomon-seal-app.Main`):
-  1. Найти `plugins/` рядом с JAR.
-  2. `ModuleFinder.of(pluginsDir)` → `Configuration` → `defineModulesWithOneLoader`.
-  3. `PluginRuntime.setPluginLayer(layer)`.
-  4. Запустить JavaFX.
-- **Важно:** `ServiceLoader.load(PluginRuntime.getLayer(), ToolProvider.class)` — иначе плагины не обнаружатся.
-
-### 1.5 Демо-плагин как интеграционный тест
-- `solomon-seal-plugin-demo` — отдельный Gradle-модуль.
-- Компилируется в JAR, кладётся в `plugins/` при `run`.
-- Проверяет: загрузка слоя, `ServiceLoader`, регистрация в `PluginContext`, появление UI-элемента.
-- **Без этого:** вы не узнаете, работает ли pipeline, пока не напишете реальный плагин.
+### 1.5 ✅ Демо-плагин
+- Компилируется, регистрируется через `META-INF/services`.
 
 ---
 
-## Фаза 2: Security & Sandbox (2 недели)
+## Фаза 2: Security & Sandbox 🔄 В РАБОТЕ
 
-### 2.1 Redaction Pipeline
-- **Место:** между `DeterministicContextAssembler` и `ContextBuilder`.
+### 2.1 Redaction Pipeline 🔄 Реализация
+- **Место:** между `ContextBuilder` и `LlmClient`.
+- **Компоненты:**
+  - `SecretPattern` — имя + regex + replacement
+  - `RedactionEngine` — сканирует текст, заменяет совпадения
+  - `RedactionResult` — redactedText + map placeholder→original
 - **Уровни:**
-  1. Статические regex (`sk-...`, `AIza...`, hex64).
-  2. Динамический — значения из `SecretsManager` по ключам.
-  3. Обратная замена не производится (плейсхолдеры остаются в логах).
-- **UI:** DebugPanel показывает `<SECRET>` с tooltip «redacted: OPENAI_API_KEY».
-- **Тест:** Payload с внедрённым секретом → проверка, что секрет не попал в строку запроса.
+  1. Статические regex (`sk-...`, `AIza...`, hex64, `ghp_...`, `Bearer\s+[\w-]+`)
+  2. Динамический — значения из `SecretsManager` (ключи из `.env`, `~/.solomonseal/secrets.json`)
+  3. Обратная замена не производится (плейсхолдеры остаются в логах)
+- **UI:** DebugPanel показывает `&lt;SECRET:OPENAI_API_KEY&gt;` с tooltip.
+- **Тест:** `RedactionEngineTest` — payload с секретом → проверка отсутствия в строке запроса.
 
 ### 2.2 Capability-based Execution
-- **Заменить `BashTool` на маршрутизатор:**
-  ```java
-  interface ExecAdapter {
-      boolean supports(String command);
-      ToolResult execute(String command, Path cwd);
-      Optional<String> getUndoCommand(String command); // для checkpointing
-  }
-  ```
-- **Адаптеры по умолчанию:** `GitAdapter`, `MavenAdapter`, `GradleAdapter`.
-- **UnsafeBashAdapter:** требует `capabilities.exec.unsafe=true` в конфиге.
-- **Файловый sandbox:** `WriteFileTool` и `EditFileTool` резолвят пути относительно `project.root`, блокируют `../`.
+- `ExecAdapter` interface вместо прямого `Runtime.exec()`.
+- Адаптеры: `GitAdapter`, `MavenAdapter`, `GradleAdapter`.
+- `UnsafeBashAdapter` требует `capabilities.exec.unsafe=true`.
 
 ### 2.3 Permission Matrix в UI
-- Галочки в DebugPanel/Settings:
-  - [x] Allow read
-  - [x] Allow write (in project dir)
-  - [ ] Allow exec (via adapters only)
-  - [ ] Allow unsafe exec
-  - [ ] Allow network (WebFetchTool)
-- При попытке нарушения — диалог с объяснением, почему заблокировано.
+- Галочки в DebugPanel/Settings.
 
 ---
 
