@@ -18,7 +18,6 @@ module ru.mcs.solomonseal {
     exports ru.mcs.solomonseal.core.app;
     exports ru.mcs.solomonseal.app.javafx;
     exports ru.mcs.solomonseal.app.javafx.ui;
-    exports ru.mcs.solomonseal.app.tui;
     exports ru.mcs.solomonseal.core.index;
     exports ru.mcs.solomonseal.core.agent;
 

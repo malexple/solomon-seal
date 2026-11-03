@@ -10,9 +10,14 @@ import java.util.function.Consumer;
 public interface LlmClient {
 
     /**
-     * Non-streaming: returns full response.
+     * Non-streaming: returns assistant's text content only.
      */
     CompletableFuture<String> chat(RuntimeProfile profile, ChatRequest request);
+
+    /**
+     * Non-streaming: returns raw JSON response body (for agent loop/tool_calls parsing).
+     */
+    CompletableFuture<String> complete(RuntimeProfile profile, ChatRequest request);
 
     /**
      * Streaming: calls onToken for each token chunk, onComplete when done, onError on failure.

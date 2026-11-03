@@ -51,6 +51,18 @@ public class OpenAiCompatibleClient implements LlmClient {
 
     @Override
     public CompletableFuture<String> chat(RuntimeProfile profile, ChatRequest request) {
+        return complete(profile, request).thenApply(json -> {
+            try {
+                var root = mapper.readTree(json);
+                return root.path("choices").get(0).path("message").path("content").asText();
+            } catch (Exception e) {
+                throw new RuntimeException("chat() failed to extract content: " + e.getMessage(), e);
+            }
+        });
+    }
+
+    @Override
+    public CompletableFuture<String> complete(RuntimeProfile profile, ChatRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 var body = mapper.writeValueAsString(request);
@@ -59,10 +71,9 @@ public class OpenAiCompatibleClient implements LlmClient {
                 if (resp.statusCode() != 200) {
                     throw new RuntimeException("LLM error " + resp.statusCode() + ": " + resp.body());
                 }
-                var root = mapper.readTree(resp.body());
-                return root.path("choices").get(0).path("message").path("content").asText();
+                return resp.body();
             } catch (Exception e) {
-                throw new RuntimeException("chat() failed: " + e.getMessage(), e);
+                throw new RuntimeException("complete() failed: " + e.getMessage(), e);
             }
         });
     }

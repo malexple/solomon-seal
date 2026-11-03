@@ -70,7 +70,7 @@ public class ChatView extends BorderPane {
         this.indexManager         = indexManager;
         this.confirmationHandler  = confirmationHandler;
         this.orchestratorService = new OrchestratorService(
-                appState.getConfig(), toolRegistry, indexManager
+                appState.getConfig(), llmClient, toolRegistry, indexManager
         );
         buildUI();
     }

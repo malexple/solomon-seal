@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.mcs.solomonseal.core.config.AppConfig;
 import ru.mcs.solomonseal.core.index.IndexManager;
+import ru.mcs.solomonseal.core.llm.LlmClient;
 import ru.mcs.solomonseal.core.session.Session;
 import ru.mcs.solomonseal.core.tools.ConfirmationHandler;
 import ru.mcs.solomonseal.core.tools.ExecutionContext;
@@ -33,16 +34,19 @@ public class OrchestratorService {
         """;
 
     private final AppConfig                     appConfig;
+    private final LlmClient                     llmClient;
     private final ToolRegistry                  toolRegistry;
     private final IndexManager                  indexManager;
     private final DeterministicContextAssembler deterministicAssembler;
 
     public OrchestratorService(
             AppConfig appConfig,
+            LlmClient llmClient,
             ToolRegistry toolRegistry,
             IndexManager indexManager
     ) {
         this.appConfig              = appConfig;
+        this.llmClient              = llmClient;
         this.toolRegistry           = toolRegistry;
         this.indexManager           = indexManager;
         this.deterministicAssembler = new DeterministicContextAssembler(indexManager);
@@ -67,7 +71,7 @@ public class OrchestratorService {
 
         if (appConfig.orchestrator.enabled) {
             var systemPrompt = buildSystemPrompt(session);  // ← динамический промпт
-            var loop = new AgentLoop(appConfig.orchestrator, toolRegistry);
+            var loop = new AgentLoop(appConfig.orchestrator, llmClient, toolRegistry);
             return loop.run(systemPrompt, userQuery, session.mode, ctx, onStep);
         } else {
             return deterministicAssembler

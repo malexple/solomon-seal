@@ -7,14 +7,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.mcs.solomonseal.core.config.OrchestratorProfile;
 import ru.mcs.solomonseal.core.llm.ChatMessage;
-import ru.mcs.solomonseal.core.llm.InsecureSslUtil;
+import ru.mcs.solomonseal.core.llm.ChatRequest;
+import ru.mcs.solomonseal.core.llm.LlmClient;
+import ru.mcs.solomonseal.core.llm.RuntimeProfile;
 import ru.mcs.solomonseal.core.tools.AgentTool;
 import ru.mcs.solomonseal.core.tools.ExecutionContext;
 import ru.mcs.solomonseal.core.tools.ToolRegistry;
 
-import java.net.URI;
-import java.net.http.*;
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
@@ -30,15 +29,19 @@ public class AgentLoop {
     private static final Logger log = LoggerFactory.getLogger(AgentLoop.class);
 
     private final OrchestratorProfile config;
+    private final LlmClient           llmClient;
     private final ToolRegistry        toolRegistry;
     private final ToolCallParser      parser = new ToolCallParser();
     private final ObjectMapper        mapper = new ObjectMapper();
-    private final HttpClient http;
+    private final RuntimeProfile      runtimeProfile;
 
-    public AgentLoop(OrchestratorProfile config, ToolRegistry toolRegistry) {
-        this.config       = config;
-        this.toolRegistry = toolRegistry;
-        this.http         = ru.mcs.solomonseal.core.llm.InsecureSslUtil.buildClient(config.trustSelfSignedCert);
+    public AgentLoop(OrchestratorProfile config, LlmClient llmClient, ToolRegistry toolRegistry) {
+        this.config        = config;
+        this.llmClient     = llmClient;
+        this.toolRegistry  = toolRegistry;
+        this.runtimeProfile = new RuntimeProfile(
+                config.baseUrl, config.apiKey, config.modelId, config.trustSelfSignedCert
+        );
     }
 
     /**
@@ -133,26 +136,14 @@ public class AgentLoop {
     // ── LLM call ─────────────────────────────────────────────────────────────
 
     private String callLlm(List<ChatMessage> messages, List<Map<String, Object>> tools) throws Exception {
-        var body = new HashMap<String, Object>();
-        body.put("model",      config.modelId);
-        body.put("messages",   messages);
-        body.put("max_tokens", config.maxTokens);
-        body.put("stream",     false);
-        if (!tools.isEmpty()) body.put("tools", tools);
-
-        var reqBody = mapper.writeValueAsString(body);
-        var req = HttpRequest.newBuilder()
-                .uri(URI.create(config.baseUrl.replaceAll("/$", "") + "/chat/completions"))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + config.apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(reqBody))
-                .timeout(Duration.ofMinutes(2))
-                .build();
-
-        var resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-        if (resp.statusCode() >= 400)
-            throw new RuntimeException("HTTP " + resp.statusCode() + ": " + resp.body());
-        return resp.body();
+        var request = new ChatRequest(
+                config.modelId,
+                messages,
+                false,
+                config.maxTokens,
+                tools.isEmpty() ? null : tools
+        );
+        return llmClient.complete(runtimeProfile, request).get();
     }
 
     // ── Tool definitions (OpenAI format) ─────────────────────────────────────
