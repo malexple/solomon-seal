@@ -1,0 +1,10 @@
+jar {
+    manifest {
+        attributes 'Automatic-Module-Name': 'ru.mcs.solomonseal.plugin.demo'
+    }
+}
+
+dependencies {
+    implementation project(':solomon-seal-spi')
+    implementation project(':solomon-seal-ui-spi')
+}

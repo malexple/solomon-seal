@@ -1,0 +1,9 @@
+jar {
+    manifest {
+        attributes 'Automatic-Module-Name': 'ru.mcs.solomonseal.spi'
+    }
+}
+
+dependencies {
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.0'
+}

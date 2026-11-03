@@ -1,1 +1,8 @@
 rootProject.name = 'solomon-seal'
+
+include 'solomon-seal-spi'
+include 'solomon-seal-core'
+include 'solomon-seal-ui-spi'
+include 'solomon-seal-ui'
+include 'solomon-seal-app'
+include 'solomon-seal-plugin-demo'

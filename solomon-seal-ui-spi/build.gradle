@@ -1,0 +1,18 @@
+plugins {
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+}
+
+jar {
+    manifest {
+        attributes 'Automatic-Module-Name': 'ru.mcs.solomonseal.ui.spi'
+    }
+}
+
+dependencies {
+    implementation project(':solomon-seal-spi')
+}
+
+javafx {
+    version = '21.0.2'
+    modules = ['javafx.controls']
+}
